@@ -162,81 +162,50 @@ class Attention_Match_RNN(object):
         """
         Implement question passage matching from R-Net
         """
+        u_Q = question_encoding
+        u_P = context_encoding
 
-        v_P = []
+        v_P = []  # gated rnn的结果
+        # 不能使用动态的rnn了，因为每个t的输入，都要用到t-1时刻的输出
+        cur_batch_size = tf.shape(context_encoding)[0]
+        self.QP_state = self.QP_cell.zero_state(batch_size=cur_batch_size, dtype=tf.float32)
+
         for i in range(context_len):
+            # tanh里的第1部分
+            W_uQ_uQ = self.matrix_multiplication(u_Q, self.W_uQ)
 
-            ## As in the paper
-            u_Q = question_encoding  # [batch_size, q_length, 2*hidden_size_encoder]
-            u_P = context_encoding  # [batch_size, context_length, 2*hidden_size_encoder]
+            # tanh里的第2部分
+            u_iP = u_P[:, i, :]
+            W_uP_iP = self.matrix_multiplication(u_iP, self.W_uP)
 
-            W_uQ_uQ = self.matrix_multiplication(u_Q, self.W_uQ)  # [batch_size, q_len, hidden_size_qp]
-            print("Shape W_uQ_cal", W_uQ_uQ.shape)
-
-            cur_batch_size = tf.shape(context_encoding)[0]
-            concat_u_Pi = tf.concat([tf.reshape(u_P[:, i, :], [cur_batch_size, 1, 2 * self.hidden_size_encoder])] * question_len, 1)
-
-            # u_Pi_slice = tf.reshape(u_P[:, i, :], [cur_batch_size, 1, 2 * self.hidden_size_encoder])
-
-            print("Shape Concat", concat_u_Pi)
-            W_uP_uPi = self.matrix_multiplication(concat_u_Pi, self.W_uP)  # [batch_size, 1, hidden_size_qp]
-
-            print("Shape W_uP_cal", W_uP_uPi.shape)  # [batch_size, 1, hidden_size_qp]
-
+            # tanh里的第3部分
             if i == 0:
-                tanh_qp = tf.tanh(W_uQ_uQ + W_uP_uPi)  # [batch_size, q_length, hidden_size_qp]
+                tanh_qp = tf.tanh(W_uQ_uQ + W_uP_iP)
             else:
+                v_t_1_P = v_P[i - 1]
+                W_vP_vPi = self.matrix_multiplication(v_t_1_P, self.W_vP)
+                tanh_qp = tf.tanh(W_uQ_uQ + W_uP_iP + W_vP_vPi)
 
-                concat_v_Pi = tf.concat([tf.reshape(v_P[i - 1], [cur_batch_size, 1, self.hidden_size_qp])] * question_len, 1)
-                # v_Pi_slice = tf.reshape(v_P[i - 1], [cur_batch_size, 1, self.hidden_size_qp])
-
-                W_vP_vPi = self.matrix_multiplication(concat_v_Pi, self.W_vP)
-                print("Shape W_vP_cal", W_vP_vPi.shape)  # [batch_size, 1, hidden_size_qp]
-                tanh_qp = tf.tanh(W_uQ_uQ + W_uP_uPi + W_vP_vPi)
-
-            print("Shape tanh", tanh_qp.shape)
-            # Calculate si = vT*tanh
-            s_i_qp = self.matrix_multiplication(tanh_qp, tf.reshape(self.v_t, [-1, 1]))  # [batch_size, q_length, 1]
-            print("Shape s_i", s_i_qp.shape)
-
-            s_i_qp = tf.squeeze(s_i_qp, axis=2)  # [batch_size, q_length]. Same shape as values Mask
-
-            # print("Shape values mask", values_mask.shape)
-
-            _, a_i_qp = masked_softmax(s_i_qp, values_mask, 1)  # [batch_size, q_length]
-            print("Shape a_i_qp", a_i_qp.shape)
-
-            a_i_qp = tf.expand_dims(a_i_qp, axis=1)  # [batch_size, 1,  q_length]
-            c_i_qp = tf.reduce_sum(tf.matmul(a_i_qp, u_Q), 1)  # [batch_size, 2 * hidden_size_encoder]
-
-            print("Shape c_i", c_i_qp.shape)
+            # tanh 外的vt
+            s_i = tf.squeeze(self.matrix_multiplication(tanh_qp, self.v_t), axis=2)  # [batch_size,q,1]->[batch_size,q]
+            _, a_i = masked_softmax(s_i, values_mask, 1)  # [batch_size,q]
+            a_i_qp = tf.expand_dims(a_i, axis=1)  # [batch_size,1,q]
+            c_i = tf.reduce_sum(tf.matmul(a_i_qp, u_Q), axis=1)  # [batch,2*hidden_size_encoder]
 
             # gate
+            concat_ip_c_i = tf.concat([u_iP, c_i], axis=1)
+            g_t = tf.sigmoid(tf.matmul(self.W_g_QP, concat_ip_c_i))
+            concat_ip_c_i_star = tf.multiply(g_t, concat_ip_c_i)
 
-            slice = u_P[:, i, :]
-
-            print("Shape slice", slice)
-            u_iP_c_i = tf.concat([slice, c_i_qp], 1)
-            print("Shape u_iP_c_i", u_iP_c_i.shape)  # [batch_size, 4*hidden_size_encoder]
-
-            g_i = tf.sigmoid(tf.matmul(u_iP_c_i, self.W_g_QP))
-            print("Shape g_i", g_i.shape)  # batch_size, 4*hidden_size_encoder]
-
-            u_iP_c_i_star = tf.multiply(u_iP_c_i, g_i)  # batch_size, 4*hidden_size_encoder]
-
-            print("Shape u_iP_c_i_star", u_iP_c_i_star.shape)
-
-            self.QP_state = self.QP_cell.zero_state(batch_size=cur_batch_size, dtype=tf.float32)
-
-            # QP_attention
+            # 进行rnn输出
             with tf.variable_scope("QP_attention"):
                 if i > 0: tf.get_variable_scope().reuse_variables()
-                output, self.QP_state = self.QP_cell(u_iP_c_i_star, self.QP_state)
+                output, self.QP_state = self.QP_cell(concat_ip_c_i_star, self.QP_state)
                 v_P.append(output)
+
         v_P = tf.stack(v_P, 1)
         v_P = tf.nn.dropout(v_P, self.keep_prob)
         print("Shape v_P", v_P.shape)  # [batch_size, context_len, hidden_size_qp]
-
         return v_P
 
     def build_graph_sm_matching(self, context_encoding, question_encoding, values_mask, context_mask, context_len,
@@ -316,6 +285,123 @@ class Attention_Match_RNN(object):
 
         return h_P
 
+
+class Answer_Pointer(object):
+    def create_weights(self, size_in, size_out, name):
+        return tf.get_variable(name=name, dtype=tf.float32, shape=(size_in, size_out),
+                               initializer=tf.contrib.layers.xavier_initializer())
+
+    def create_vector(self, size_in, name):
+        return tf.get_variable(name=name, dtype=tf.float32, shape=(size_in),
+                               initializer=tf.contrib.layers.xavier_initializer())
+
+    def matrix_multiplication(self, mat, weight):
+        # [batch_size, seq_len, hidden_size] * [hidden_size, p] = [batch_size, seq_len, p]
+
+        mat_shape = mat.get_shape().as_list()  # shape - ijk
+        weight_shape = weight.get_shape().as_list()  # shape -kl
+        assert (mat_shape[-1] == weight_shape[0])
+        mat_reshape = tf.reshape(mat, [-1, mat_shape[-1]])  # [batch_size * n, m]
+        mul = tf.matmul(mat_reshape, weight)  # [batch_size * n, p]
+        return tf.reshape(mul, [-1, mat_shape[1], weight_shape[-1]])  # reshape to batch_size, seq_len, p
+
+    def __init__(self, keep_prob, hidden_size_encoder, question_len, hidden_size_attn):
+        """
+        Inputs:
+          hidden_size: int. Hidden size of the RNN
+          keep_prob: Tensor containing a single scalar that is the keep probability (for dropout)
+        """
+        self.hidden_size_encoder = hidden_size_encoder
+        self.keep_prob = keep_prob
+        self.hidden_size_attn = hidden_size_attn
+        self.question_len = question_len
+
+        ## Initializations for question pooling
+        self.W_ruQ = self.create_weights(2 * self.hidden_size_encoder, self.hidden_size_encoder, name='W_ruQ')
+        self.W_vQ = self.create_weights(self.hidden_size_encoder, self.hidden_size_encoder, name='W_vQ')
+
+        ## Same size as question hidden
+        self.W_VrQ = self.create_weights(self.question_len, self.hidden_size_encoder,name='W_VrQ')
+        self.v_qpool = self.create_vector(self.hidden_size_encoder, name='v_qpool')
+
+        ## Initializations for answer pointer
+        self.W_hP = self.create_weights(self.hidden_size_attn, 2 * self.hidden_size_encoder, name='W_hP')
+        self.W_ha = self.create_weights(2 * self.hidden_size_encoder, 2 * self.hidden_size_encoder, name='W_ha')
+
+        self.v_ptr = self.create_vector(2 * self.hidden_size_encoder, name='v_ptr')
+
+        self.ans_ptr_cell = tf.contrib.rnn.GRUCell(2 * self.hidden_size_encoder)  # initiate GRU cell
+        self.ans_ptr_cell = tf.contrib.rnn.DropoutWrapper(self.ans_ptr_cell, input_keep_prob=self.keep_prob)  # added dropout wrapper
+
+    def question_pooling(self, question_encoding, values_mask):
+        ## Question Pooling as suggested in R-Net Paper
+
+        u_Q = question_encoding
+
+        # tanh的第一部分
+        W_ruQ_u_Q = self.matrix_multiplication(u_Q, self.W_ruQ)  # [batch_size, q_length, hidden_size_encoder]
+        # print("Shape W_ruQ_u_Q", W_ruQ_u_Q.shape)
+        # tanh的第二部分
+        W_vQ_V_rQ = tf.matmul(self.W_VrQ, self.W_vQ)  # [ q_length, hidden_size_encoder]
+        cur_batch_size = tf.shape(u_Q)[0]
+        W_vQ_V_rQ = tf.expand_dims(W_vQ_V_rQ, axis=0)
+        # 相加做tanh
+        tanh_qpool = tf.tanh(W_ruQ_u_Q + W_vQ_V_rQ)  # [batch_size, q_length, hidden_size_encoder]
+        s_i_qpool = self.matrix_multiplication(tanh_qpool, tf.reshape(self.v_qpool, [-1, 1]))  # [batch_size, q_len, 1]
+
+        # 第二个公式，做softmax
+        s_i_qpool = tf.squeeze(s_i_qpool, axis=2)  # [batch_size, q_length]. Same shape as values Mask
+        _, a_i_qpool = masked_softmax(s_i_qpool, values_mask, 1)  # [batch_size, q_length]
+        # 第三个公式，做pooling
+        a_i_qpool = tf.expand_dims(a_i_qpool, axis=1)  # [batch_size, 1,  q_length]
+        r_Q = tf.reduce_sum(tf.matmul(a_i_qpool, u_Q), 1)  # [batch_size, 2 * hidden_size_encoder]
+
+        r_Q = tf.nn.dropout(r_Q, self.keep_prob)
+        print(' shape of r_Q', r_Q.shape)  # [batch_size, 2 * hidden_size_encoder]
+        return r_Q
+
+    def build_graph_answer_pointer(self, context_hidden, ques_encoding, values_mask, context_mask, context_len):
+
+        h_P = context_hidden
+        r_Q = self.question_pooling(ques_encoding, values_mask)
+        h_a = None  # pointer network 的输出 last hidden state
+        p = []  # 记录开始位置，结束位置的，经过softmax后的
+        logits = []
+        cur_batch_size = tf.shape(ques_encoding)[0]
+        for i in range(2):
+            # 第一个公式
+            # tanh 第一部分
+            W_hp_h_p = self.matrix_multiplication(h_P, self.W_hP)
+
+            # tanh 第二部分
+            # 公式9中的h_t-1_a，初始化时用r_Q，然后才是用经过 pointer network 得到的last hidden state
+            if i == 0:
+                h_t_1_a = r_Q
+            else:
+                h_t_1_a = h_a
+
+            concat_h_i1a = tf.concat([tf.reshape(h_t_1_a, [cur_batch_size, 1, 2 * self.hidden_size_encoder])] * context_len, 1)
+            W_ha_h_i1a = self.matrix_multiplication(concat_h_i1a, self.W_ha)
+
+            tanh = tf.tanh(W_hp_h_p + W_ha_h_i1a)
+            s_t = self.matrix_multiplication(tanh, tf.reshape(self.v_ptr,[-1,1]))  # [batch_size,context_len,1]
+            s_t = tf.squeeze(s_t, axis=2)
+
+            # 第二个公式
+            logits_ptr, a_t = masked_softmax(s_t, context_mask, 1)  # [batch_size,context_len]
+
+            # 第三个公式，不进行argmax，这是外部函数的事情
+            p.append(a_t)
+            logits.append(logits_ptr)
+
+            # 得到a_t后，可以进行pointer network了，也就是公式10的计算
+            a_t = tf.expand_dims(a_t, 1)  # [batch_size,1,context_len]
+            c_t = tf.reduce_sum(tf.matmul(a_t, h_P), 1)  # [batch_size,hidden_size]
+            if i == 0:
+                self.ans_ptr_state = self.ans_ptr_cell.zero_state(batch_size=cur_batch_size, dtype=tf.float32)  # TODO 论文中是说使用r_Q进行初始化？？
+                h_a, _ = self.ans_ptr_cell(c_t, self.ans_ptr_state)
+
+        return p,logits
 
 class Bidaf_output_layer(object):
     def __init__(self, context_len, concat_len):

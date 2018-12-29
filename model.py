@@ -31,7 +31,7 @@ class Model(object):
         params = tf.trainable_variables()
         gradients = tf.gradients(self.loss, params)
         self.gradient_norm = tf.global_norm(gradients)
-        clipped_gradients, _ = tf.clip_by_global_norm(gradients, FLAGS.max_gradient_norm)
+        clipped_gradients, self.global_norm = tf.clip_by_global_norm(gradients, FLAGS.max_gradient_norm)
         self.param_norm = tf.global_norm(params)
 
         # train op
@@ -192,6 +192,7 @@ class Model(object):
             # 再进过一个双向rnn
             modeling_rnn = RNNEncoder(self.FLAGS.hidden_size_modeling, self.keep_prob)
             blended_represent = modeling_rnn.build_graph(blended_represent, self.context_mask, "bidaf_modeling")  # 论文中的M
+            # TODO self attention
 
         else:
             attn_layer = BasicAttention(self.keep_prob)
@@ -202,14 +203,22 @@ class Model(object):
         if self.FLAGS.bidaf_pointer:
             with vs.variable_scope("StartDist"):
                 start_softmax_layer = Bidaf_output_layer(self.FLAGS.context_len, 10 * self.FLAGS.hidden_size_encoder)
-                self.logits_start, self.prob_dist_start = start_softmax_layer.build_graph(blended_represent, self.bidaf_output, self.context_mask,
-                                                                                          )
+                self.logits_start, self.prob_dist_start = start_softmax_layer.build_graph(blended_represent, self.bidaf_output, self.context_mask)
             with vs.variable_scope("EndDist"):
                 modeling_rnn = RNNEncoder(self.FLAGS.hidden_size_modeling, self.keep_prob)
                 M2 = modeling_rnn.build_graph(blended_represent, self.context_mask, "bidaf_modeling")
                 end_softmax_layer = Bidaf_output_layer(self.FLAGS.context_len, 10 * self.FLAGS.hidden_size_encoder)
-                self.logits_end, self.prob_dist_end = end_softmax_layer.build_graph(M2, self.bidaf_output, self.context_mask,
-                                                                                    )
+                self.logits_end, self.prob_dist_end = end_softmax_layer.build_graph(M2, self.bidaf_output, self.context_mask)
+
+        elif self.FLAGS.answer_pointer:
+            hidden_size_attn = 2 * self.FLAGS.hidden_size_modeling
+            pointer = Answer_Pointer(self.keep_prob, self.FLAGS.hidden_size_encoder, self.FLAGS.ques_len, hidden_size_attn)
+            p, logits = pointer.build_graph_answer_pointer(blended_represent, ques_hiddens, self.ques_mask, self.context_mask, self.FLAGS.context_len)
+
+            self.logits_start = logits[0]
+            self.prob_dist_start = p[0]
+            self.logits_end = logits[1]
+            self.prob_dist_end = p[1]
 
         else:
             blended_reps_final = tf.contrib.layers.fully_connected(blended_represent, num_outputs=self.FLAGS.hidden_size_fully_connected)
@@ -290,10 +299,10 @@ class Model(object):
             feed_dict[self.char_ids_context] = self.padded_char_ids(batch, batch.context_ids)
             feed_dict[self.char_ids_ques] = self.padded_char_ids(batch, batch.ques_ids)
 
-        output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm]
-        [_, summaries, loss, global_step, param_norm, gradient_norm] = session.run(output_feed, feed_dict)
+        output_feed = [self.updates, self.summaries, self.loss, self.global_step, self.param_norm, self.gradient_norm,self.global_norm]
+        [_, summaries, loss, global_step, param_norm, gradient_norm,global_norm] = session.run(output_feed, feed_dict)
         summary_writer.add_summary(summaries, global_step)
-        return loss, global_step, param_norm, gradient_norm
+        return loss, global_step, param_norm, gradient_norm,global_norm
 
     def get_dev_loss(self, session, dev_context_path, dev_ques_path, dev_ans_path):
 
@@ -391,11 +400,11 @@ class Model(object):
 
             for batch in get_batch_data(train_context_path, train_ques_path, train_ans_path, self.FLAGS.batch_size, self.word2id,
                                         self.FLAGS.context_len, self.FLAGS.ques_len):
-                loss, global_step, param_norm, gradient_norm = self.run_train_iter(session, batch, summary_writer)
+                loss, global_step, param_norm, gradient_norm, global_norm = self.run_train_iter(session, batch, summary_writer)
 
                 if global_step % self.FLAGS.print_every == 0:
-                    print('epoch %d, global_step %d, loss %.5f,  grad norm %.5f, param norm %.5f' % (
-                        epoch, global_step, loss, gradient_norm, param_norm))
+                    print('epoch %d, global_step %d, loss %.5f,  grad norm %.5f ,global_norm %.5f, param norm %.5f' % (
+                        epoch, global_step, loss, gradient_norm,global_norm, param_norm))
 
                 if global_step % self.FLAGS.save_every == 0:
                     # 保存模型

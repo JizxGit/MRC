@@ -4,8 +4,9 @@ import os
 from vocab import get_embedding_word2id_id2word
 from preprocess import main as prepro
 from model import Model
-os.environ['CUDA_VISIBLE_DEVICES']='0,1'
+os.environ['CUDA_VISIBLE_DEVICES']='1'
 # 高级层面 选项
+tf.app.flags.DEFINE_integer('data_num', 100, """Flag of type integer""")
 tf.flags.DEFINE_integer(" ", 0, "选择gpu")
 tf.flags.DEFINE_string("mode", "train", "Available modes: train / show_examples / official_eval")
 tf.flags.DEFINE_string("experiment_name", "",
@@ -16,7 +17,7 @@ tf.flags.DEFINE_integer("epochs", 10, "Number of epochs to train. 0 means train 
 tf.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
 tf.flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
 tf.flags.DEFINE_float("dropout", 0.2, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.flags.DEFINE_integer("batch_size", 32, "Batch size to use")
+tf.flags.DEFINE_integer("batch_size", 48, "Batch size to use")
 tf.flags.DEFINE_integer("hidden_size_encoder", 150, "Size of the hidden states")  # 150 for bidaf ; #200 otherwise
 tf.flags.DEFINE_integer("hidden_size_qp_matching", 150, "Size of the hidden states")
 tf.flags.DEFINE_integer("hidden_size_sm_matching", 50, "Size of the hidden states")
@@ -39,7 +40,7 @@ tf.flags.DEFINE_bool("rnet_attention", False, "Perform RNET QP and SM attention-
 tf.flags.DEFINE_bool("bidaf_attention", True, "Use BIDAF Attention-True/False")
 tf.flags.DEFINE_bool("answer_pointer_RNET", False, "Use Answer Pointer from RNET-True/False")
 tf.flags.DEFINE_bool("bidaf_pointer", False, "Use bidaf_poiter")
-
+tf.flags.DEFINE_bool("answer_pointer", True, "Use Answer Pointer from RNET-True/False")
 tf.flags.DEFINE_bool("smart_span", False, "Select start and end idx based on smart conditions-True/False")
 
 # 训练时保存，验证频率

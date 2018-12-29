@@ -5,24 +5,86 @@ import nltk
 import os
 import codecs
 import sys
+import numpy as np
+import random
+import unicodedata
+import spacy
+from collections import Counter
+
+spacy_nlp = spacy.load('en_core_web_sm')
 
 reload(sys)
 sys.setdefaultencoding('utf8')
+
+random.seed(42)
+np.random.seed(42)
+
+
+#
+# class SingletonDecorator:
+#     def __init__(self, klass):
+#         self.klass = klass
+#         self.instance = None
+#
+#     def __call__(self, *args, **kwds):
+#         if self.instance == None:
+#             self.instance = self.klass(*args, **kwds)
+#         return self.instance
+#
+#
+# class Spacer:
+#     def __init__(self):
+#         self.nlp = spacy.load('en_core_web_sm', parser=False)
+#
+#     def __call__(self, *args, **kwargs):
+#         return self.nlp(*args, **kwargs)
+#
+#
+# Spacer = SingletonDecorator(Spacer)
 
 
 def get_data_from_json(file_name, data_type):
     with open(file_name, 'r') as f:
         data = json.load(f)
-    return data
+        dataset = data['data']
+    return dataset
 
 
-def tokenize(sent):
-    tokens = nltk.word_tokenize(sent)
-    return [token.replace("``", '"').replace("''", '"').lower() for token in tokens]
-    # return [token.lower() for token in nltk.word_tokenize(sent)]
+def utf_normalize_text(text):
+    return unicodedata.normalize('NFD', text)
+
+
+def tokenize_pos_ner(sent):
+    # tokens = nltk.word_tokenize(sent)
+    # nltk.pos_tag(tokens)
+    # spacy_nlp = Spacer()
+
+    doc = spacy_nlp(sent)
+    tokens = [w.text.replace("``", '"').replace("''", '"').strip() for w in doc]
+
+    # spacy的说明 https://spacy.io/usage/linguistic-features
+    # 文章自身的特征（POS、NER、lemma、Term Frequency）
+    poses = [w.tag_ for w in doc]  # 获取 POS(pos_: The simple part-of-speech tag; Tag_: The detailed part-of-speech tag.)
+    ners = [w.ent_type_ if w.ent_type_ !='' else "<UNK>" for w in doc]  # 获取token 级别的 NER （命名实体识别）
+    lemmas = [w.lemma_ if w.lemma_ != '-PRON-' else w.text.lower() for w in doc]  # 获取词干
+    # Term Frequency
+    tokens_lower = [w.lower() for w in tokens]
+    counter = Counter(tokens_lower)
+    total = float(len(tokens_lower))
+    tf = [str(counter[w] / total) for w in tokens_lower]
+
+    return tokens, poses, ners, lemmas, tf
+    # return [token.replace("``", '"').replace("''", '"').strip() for token in tokens]
+    # return [token.replace("``", '"').replace("''", '"').lower() for token in tokens]
 
 
 def getcharloc2wordloc(context, context_tokens):
+    '''
+     获取每个 char 对应文本中的第几个 token 的映射表
+    :param context: 原始文本
+    :param context_tokens:  token 化后的 list
+    :return:
+    '''
     acc = ''
     word_index = 0  # word 在文本中 的下标
     mapping = {}
@@ -31,7 +93,7 @@ def getcharloc2wordloc(context, context_tokens):
     #     pass
     for i, char in enumerate(context):
         mapping[i] = (context_token, word_index)  # (word,word下标)
-        char = char.strip()
+        char = char.strip()  # 去除一些奇怪的不可见字符
         if len(char) > 0:
             # if char != u' ' and char != '\n' and char!=u'　' and char!=' ' and char!=' ':
             acc += char
@@ -40,8 +102,8 @@ def getcharloc2wordloc(context, context_tokens):
                 word_index += 1
                 acc = ''
     if len(context_tokens) != word_index:
-        print(' '.join(context_tokens))
-        print(context)
+        # print(' '.join(context_tokens))
+        # print(context)
         return None
     return mapping
 
@@ -54,20 +116,18 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
     :param out_dir: 保存位置
     :return:
     '''
-    with open(file_name, 'r') as f:
-        data = json.load(f)
-        dataset = data['data']
 
     examples = []
     num_mappingprob, num_tokenprob = 0, 0
+    dataset = get_data_from_json(file_name, data_type)
 
     for i in tqdm(range(len(dataset)), desc="process... {} data".format(data_type)):
         paragraphs = dataset[i]['paragraphs']
         for paragraph in paragraphs:
             context = paragraph['context']
             context = context.replace("''", '" ').replace("``", '" ').replace('　', ' ')
-            context_tokens = tokenize(context)  # token是小写的
-            context = context.lower()  # 在tokenize后再小写，因为nltk对大小写敏感
+            context_tokens, context_poses, context_ners, context_lemmas, context_tf = tokenize_pos_ner(context)  # token是小写的
+            # context = context.lower()  # 在tokenize后再小写，因为nltk对大小写敏感
 
             qas = paragraph['qas']
             charloc2wordloc = getcharloc2wordloc(context, context_tokens)  # char id 映射到 word id
@@ -77,39 +137,68 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
 
             for qa in qas:
                 question = qa['question']
-                question_tokens = tokenize(question)
+                question_tokens, question_poses, question_ners, question_lemmas, _ = tokenize_pos_ner(question)
+                question_tokens_lower = [w.lower() for w in question_tokens]
+                question_tokens_set = set(question_tokens)
+                question_tokens_lower_set = set(question_tokens_lower)
+                question_lemmas_set = set(question_lemmas)
+                context_tokens_lower = [w.lower() for w in context_tokens]
+                exact_match = [('1' if w in question_tokens_set else '0')  for w in context_tokens]  # 精确匹配
+                lower_match = [('1' if w in question_tokens_lower_set else '0') for w in context_tokens_lower]  # 小写匹配
+                lemma_match = [('1' if w in question_lemmas_set else '0') for w in context_lemmas]  # 提取文章 token 的词干是否出现在问题中
 
                 # 只选择第一个答案
-                answer = qa['answers'][0]['text'].lower()
+                answer = qa['answers'][0]['text']
                 ans_char_start = qa['answers'][0]['answer_start']
                 ans_char_end = ans_char_start + len(answer)
+
                 ans_word_start = charloc2wordloc[ans_char_start][1]
                 ans_word_end = charloc2wordloc[ans_char_end - 1][1]
-                answer_tokens = context_tokens[ans_word_start: ans_word_end + 1]
-                answer_span = [str(ans_word_start), str(ans_word_end)]
+
+                answer_tokens = context_tokens[ans_word_start: ans_word_end + 1]  # 最后保存的是从context_tokens抽取的答案，并非原始提供的
+                answer_span = [str(ans_word_start), str(ans_word_end)]  # 包括结束位置
 
                 # ans_tokens has "fifth-generation" but the ans_text is "generation", which doesn't match.
                 if ''.join(answer_tokens) != ''.join(answer.split()):
                     num_tokenprob += 1
+                    # print(answer_tokens)
+                    # print(answer.split())
                     continue
 
-                examples.append((' '.join(context_tokens), ' '.join(question_tokens), ' '.join(answer_tokens), ' '.join(answer_span)))
-    # TODO 随机打乱
+                examples.append((' '.join(context_tokens), ' '.join(question_tokens), ' '.join(answer_tokens), ' '.join(answer_span),
+                                 ' '.join(context_poses), ' '.join(context_ners), ' '.join(context_tf), ' '.join(exact_match), ' '.join(lower_match),
+                                 ' '.join(lemma_match)))
+    # 随机打乱
+    indices = range(len(examples))
+    np.random.shuffle(indices)
+
     print(out_dir + data_type)
+
+    print "Number of (context, question, answer) triples discarded due to char -> token mapping problems: ", num_mappingprob
+    print "Number of (context, question, answer) triples discarded because character-based answer span is unaligned with tokenization: ", num_tokenprob
     with codecs.open(os.path.join(out_dir, data_type) + '.context', 'w', encoding='utf-8') as context_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.question', 'w', encoding='utf-8') as question_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.answer', 'w', encoding='utf-8') as answer_writer, \
-            codecs.open(os.path.join(out_dir, data_type) + '.span', 'w', encoding='utf-8') as answer_span_writer:
+            codecs.open(os.path.join(out_dir, data_type) + '.span', 'w', encoding='utf-8') as answer_span_writer, \
+            codecs.open(os.path.join(out_dir, data_type) + '.pos', 'w', encoding='utf-8') as pos_writer, \
+            codecs.open(os.path.join(out_dir, data_type) + '.ner', 'w', encoding='utf-8') as ner_writer, \
+            codecs.open(os.path.join(out_dir, data_type) + '.tf', 'w', encoding='utf-8') as tf_writer, \
+            codecs.open(os.path.join(out_dir, data_type) + '.exact_match', 'w', encoding='utf-8') as exact_match_writer, \
+            codecs.open(os.path.join(out_dir, data_type) + '.lower_match', 'w', encoding='utf-8') as lower_match_writer, \
+            codecs.open(os.path.join(out_dir, data_type) + '.lemma_match', 'w', encoding='utf-8') as lemma_match_writer:
 
-        for i in range(len(examples)):
-            context, question, answer, answer_span = examples[i]
-
+        for i in indices:
+            context, question, answer, answer_span, pos, ner, tf, exact_match, lower_match, lemma_match = examples[i]
             context_writer.write(context.strip() + '\n')
-            question_writer.write(question + '\n')
-            answer_writer.write(answer + '\n')
+            question_writer.write(question.strip() + '\n')
+            answer_writer.write(answer.strip() + '\n')
             answer_span_writer.write(str(answer_span) + '\n')
-    print "Number of (context, question, answer) triples discarded due to char -> token mapping problems: ", num_mappingprob
-    print "Number of (context, question, answer) triples discarded because character-based answer span is unaligned with tokenization: ", num_tokenprob
+            pos_writer.write(pos.strip() + '\n')
+            ner_writer.write(ner.strip() + '\n')
+            exact_match_writer.write(exact_match.strip() + '\n')
+            lower_match_writer.write(lower_match.strip() + '\n')
+            lemma_match_writer.write(lemma_match.strip() + '\n')
+            tf_writer.write(tf.strip() + '\n')
     print("{}/{} examples saved".format(len(examples), len(examples) + num_tokenprob + num_mappingprob))
 
 
@@ -137,4 +226,11 @@ def main(FLAGS):
 
 
 if __name__ == '__main__':
-    main()
+    raw_data_dir = './data/raw/'
+    train_data = 'train-v1.1.json'
+    dev_data = 'dev-v1.1.json'
+    output = './data/data/'  # 预处理的输出目录
+    test = './data/test/'  # 测试用的临时输出目录
+
+    preprocess_and_save_data('train', os.path.join(raw_data_dir, train_data), output)
+    preprocess_and_save_data('dev', os.path.join(raw_data_dir, dev_data), output)
