@@ -105,12 +105,14 @@ def get_tag2id():
     tag2id = {}
     for i, tag in enumerate(vocab_tag):
         tag2id[tag] = i
+    return tag2id
 
 
 def get_ner2id():
     ner2id = {}
     for i, ner in enumerate(vocab_ent):
         ner2id[ner] = i
+    return ner2id
 
 
 if __name__ == "__main__":

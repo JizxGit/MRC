@@ -6,7 +6,7 @@ from preprocess import main as prepro
 from model import Model
 os.environ['CUDA_VISIBLE_DEVICES']='1'
 # 高级层面 选项
-tf.app.flags.DEFINE_integer('data_num', 100, """Flag of type integer""")
+tf.flags.DEFINE_integer('data_num', 100, """Flag of type integer""")
 tf.flags.DEFINE_integer(" ", 0, "选择gpu")
 tf.flags.DEFINE_string("mode", "train", "Available modes: train / show_examples / official_eval")
 tf.flags.DEFINE_string("experiment_name", "",
@@ -95,7 +95,7 @@ def initial_model(session, ckpt_path, expect_exists=False):
 
 
 def main(unused_argv):
-    FLAGS = tf.flags.FLAGS
+    config = tf.flags.FLAGS
 
     # 创建必须的文件夹
     if not os.path.exists(SUMMARY_DIR):
@@ -104,38 +104,38 @@ def main(unused_argv):
         os.makedirs(MODEL_DIR)
 
     # 处理embedding,word2id,id2word
-    FLAGS.embedding_file = FLAGS.embedding_file or 'glove.6B.{}d.txt'.format(FLAGS.embedding_size)
-    embed_matrix, word2id, id2word = get_embedding_word2id_id2word(FLAGS.embedding_dir, FLAGS.embedding_file, FLAGS.embedding_size)
+    config.embedding_file = config.embedding_file or 'glove.6B.{}d.txt'.format(config.embedding_size)
+    embed_matrix, word2id, id2word = get_embedding_word2id_id2word(config.embedding_dir, config.embedding_file, config.embedding_size)
 
     # 处理原始数据，保存处理后的数据
-    prepro(FLAGS)
+    prepro(config)
 
     # 训练集数据与验证集数据
-    train_context_path = os.path.join(FLAGS.prepro_data_dir, "train.context")
-    train_ques_path = os.path.join(FLAGS.prepro_data_dir, "train.question")
-    train_ans_span_path = os.path.join(FLAGS.prepro_data_dir, "train.span")
-    dev_context_path = os.path.join(FLAGS.prepro_data_dir, "dev.context")
-    dev_ques_path = os.path.join(FLAGS.prepro_data_dir, "dev.question")
-    dev_ans_span_path = os.path.join(FLAGS.prepro_data_dir, "dev.span")
+    train_context_path = os.path.join(config.prepro_data_dir, "train.context")
+    train_ques_path = os.path.join(config.prepro_data_dir, "train.question")
+    train_ans_span_path = os.path.join(config.prepro_data_dir, "train.span")
+    dev_context_path = os.path.join(config.prepro_data_dir, "dev.context")
+    dev_ques_path = os.path.join(config.prepro_data_dir, "dev.question")
+    dev_ans_span_path = os.path.join(config.prepro_data_dir, "dev.span")
 
     # 创建模型
-    qa_model = Model(FLAGS, embed_matrix, word2id, id2word)
+    qa_model = Model(config, embed_matrix, word2id, id2word)
 
     # 配置session信息 
     sess_config = tf.ConfigProto(allow_soft_placement=True)  # 是否打印设备分配日志;如果你指定的设备不存在,允许TF自动分配设备 
     sess_config.gpu_options.allow_growth = True  # 动态申请显存
 
-    if FLAGS.mode == 'train':
+    if config.mode == 'train':
         with tf.Session(config=sess_config) as sess:
-            initial_model(sess, FLAGS.ckpt_path)
+            initial_model(sess, config.ckpt_path)
             qa_model.train(sess, train_context_path, train_ques_path, train_ans_span_path, dev_context_path, dev_ques_path, dev_ans_span_path)
 
-    elif FLAGS.mode == 'show_examples':
+    elif config.mode == 'show_examples':
         pass
-    elif FLAGS.mode == ' official_eval':
+    elif config.mode == 'official_eval':
         pass
     else:
-        raise Exception("未知的mode：「」".format(FLAGS.mode))
+        raise Exception("未知的mode：「」".format(config.mode))
 
 
 if __name__ == '__main__':

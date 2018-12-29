@@ -19,6 +19,8 @@ sys.setdefaultencoding('utf8')
 random.seed(42)
 np.random.seed(42)
 
+SPLIT_TOKEN = "  "
+
 
 #
 # class SingletonDecorator:
@@ -65,13 +67,13 @@ def tokenize_pos_ner(sent):
     # spacy的说明 https://spacy.io/usage/linguistic-features
     # 文章自身的特征（POS、NER、lemma、Term Frequency）
     poses = [w.tag_ for w in doc]  # 获取 POS(pos_: The simple part-of-speech tag; Tag_: The detailed part-of-speech tag.)
-    ners = [w.ent_type_ if w.ent_type_ !='' else "<UNK>" for w in doc]  # 获取token 级别的 NER （命名实体识别）
+    ners = [w.ent_type_ if w.ent_type_ != '' else u"<UNK>" for w in doc]  # 获取token 级别的 NER （命名实体识别）
     lemmas = [w.lemma_ if w.lemma_ != '-PRON-' else w.text.lower() for w in doc]  # 获取词干
     # Term Frequency
     tokens_lower = [w.lower() for w in tokens]
     counter = Counter(tokens_lower)
     total = float(len(tokens_lower))
-    tf = [str(counter[w] / total) for w in tokens_lower]
+    tf = [counter[w] / total for w in tokens_lower]
 
     return tokens, poses, ners, lemmas, tf
     # return [token.replace("``", '"').replace("''", '"').strip() for token in tokens]
@@ -143,9 +145,9 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
                 question_tokens_lower_set = set(question_tokens_lower)
                 question_lemmas_set = set(question_lemmas)
                 context_tokens_lower = [w.lower() for w in context_tokens]
-                exact_match = [('1' if w in question_tokens_set else '0')  for w in context_tokens]  # 精确匹配
-                lower_match = [('1' if w in question_tokens_lower_set else '0') for w in context_tokens_lower]  # 小写匹配
-                lemma_match = [('1' if w in question_lemmas_set else '0') for w in context_lemmas]  # 提取文章 token 的词干是否出现在问题中
+                exact_match = [(1 if w in question_tokens_set else 0) for w in context_tokens]  # 精确匹配
+                lower_match = [(1 if w in question_tokens_lower_set else 0) for w in context_tokens_lower]  # 小写匹配
+                lemma_match = [(1 if w in question_lemmas_set else 0) for w in context_lemmas]  # 提取文章 token 的词干是否出现在问题中
 
                 # 只选择第一个答案
                 answer = qa['answers'][0]['text']
@@ -165,9 +167,11 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
                     # print(answer.split())
                     continue
 
-                examples.append((' '.join(context_tokens), ' '.join(question_tokens), ' '.join(answer_tokens), ' '.join(answer_span),
-                                 ' '.join(context_poses), ' '.join(context_ners), ' '.join(context_tf), ' '.join(exact_match), ' '.join(lower_match),
-                                 ' '.join(lemma_match)))
+                # 将文章的数字特征合并保存
+                feature = zip(context_poses, context_ners, context_tf, exact_match, lower_match, lemma_match)
+                context_feature = [str(f) for f in feature]
+                examples.append((SPLIT_TOKEN.join(context_tokens), SPLIT_TOKEN.join(question_tokens), SPLIT_TOKEN.join(answer_tokens),
+                                 SPLIT_TOKEN.join(answer_span), SPLIT_TOKEN.join(context_feature)))
     # 随机打乱
     indices = range(len(examples))
     np.random.shuffle(indices)
@@ -180,25 +184,15 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
             codecs.open(os.path.join(out_dir, data_type) + '.question', 'w', encoding='utf-8') as question_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.answer', 'w', encoding='utf-8') as answer_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.span', 'w', encoding='utf-8') as answer_span_writer, \
-            codecs.open(os.path.join(out_dir, data_type) + '.pos', 'w', encoding='utf-8') as pos_writer, \
-            codecs.open(os.path.join(out_dir, data_type) + '.ner', 'w', encoding='utf-8') as ner_writer, \
-            codecs.open(os.path.join(out_dir, data_type) + '.tf', 'w', encoding='utf-8') as tf_writer, \
-            codecs.open(os.path.join(out_dir, data_type) + '.exact_match', 'w', encoding='utf-8') as exact_match_writer, \
-            codecs.open(os.path.join(out_dir, data_type) + '.lower_match', 'w', encoding='utf-8') as lower_match_writer, \
-            codecs.open(os.path.join(out_dir, data_type) + '.lemma_match', 'w', encoding='utf-8') as lemma_match_writer:
+            codecs.open(os.path.join(out_dir, data_type) + '.context_feature', 'w', encoding='utf-8') as context_feature_writer:
 
         for i in indices:
-            context, question, answer, answer_span, pos, ner, tf, exact_match, lower_match, lemma_match = examples[i]
+            context, question, answer, answer_span, context_feature = examples[i]
             context_writer.write(context.strip() + '\n')
             question_writer.write(question.strip() + '\n')
             answer_writer.write(answer.strip() + '\n')
             answer_span_writer.write(str(answer_span) + '\n')
-            pos_writer.write(pos.strip() + '\n')
-            ner_writer.write(ner.strip() + '\n')
-            exact_match_writer.write(exact_match.strip() + '\n')
-            lower_match_writer.write(lower_match.strip() + '\n')
-            lemma_match_writer.write(lemma_match.strip() + '\n')
-            tf_writer.write(tf.strip() + '\n')
+            context_feature_writer.write(context_feature.strip() + '\n')
     print("{}/{} examples saved".format(len(examples), len(examples) + num_tokenprob + num_mappingprob))
 
 
@@ -233,4 +227,4 @@ if __name__ == '__main__':
     test = './data/test/'  # 测试用的临时输出目录
 
     preprocess_and_save_data('train', os.path.join(raw_data_dir, train_data), output)
-    preprocess_and_save_data('dev', os.path.join(raw_data_dir, dev_data), output)
+    # preprocess_and_save_data('dev', os.path.join(raw_data_dir, dev_data), output)
