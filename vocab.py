@@ -83,10 +83,12 @@ def get_embedding_word2id_id2word(embedding_path, pretrained_embed_filename, dim
 
         with codecs.open(embedding_file, 'r', encoding='utf-8') as f:
             for _ in tqdm(xrange(vocab_size), desc="processing {}d glove".format(dim)):
-                line = f.readline().strip().split(" ")
+                line = f.readline().rstrip().split(" ")
                 word = line[0]
                 vector = [float(v) for v in line[1:]]
-                assert len(vector) == dim
+                if len(vector)!=dim:
+                    continue
+                # assert len(vector) == dim
                 id2word[id] = word
                 word2id[word] = id
                 embed_matrix[id, :] = vector

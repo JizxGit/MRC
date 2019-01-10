@@ -41,6 +41,7 @@ class Model(object):
         # Define optimizer and updates
         # (updates is what you need to fetch in session.run to do a gradient update)
         self.global_step = tf.Variable(0, name="global_step", trainable=False)
+        # opt = tf.contrib.opt.AdaMaxOptimizer(learning_rate=FLAGS.learning_rate)  # you can try other optimizers
         opt = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)  # you can try other optimizers
         self.train_op = opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step)
 
@@ -192,7 +193,7 @@ class Model(object):
             ques_hiddens = create_rnn_graph(self.FLAGS.rnn_layer_num, self.FLAGS.hidden_size, self.ques_emb, self.ques_mask, "question")
 
         # 将问题 encode 为向量
-        weights = SelfAttn(ques_hiddens)  # [batch,len]
+        weights = SelfAttn(ques_hiddens,self.ques_mask)  # [batch,len]
         weights = tf.reshape(weights, [-1, 1, self.FLAGS.ques_len])
         encoded_question = tf.einsum('ijk,ikq->ijq', weights, ques_hiddens)  # b x 1 x 4*hidden_size
         encoded_question = tf.reshape(encoded_question, [-1, 2 * self.FLAGS.rnn_layer_num * self.FLAGS.hidden_size])  # [batch, 4*hidden_size]
@@ -399,8 +400,8 @@ class Model(object):
         config = self.FLAGS
 
         # tensorboard
-        train_summary_writer = tf.summary.FileWriter(config.summary_dir, session.graph)
-        valid_summary_writer = tf.summary.FileWriter(config.summary_dir, session.graph)
+        train_summary_writer = tf.summary.FileWriter(config.summary_dir+"/train/", session.graph)
+        valid_summary_writer = tf.summary.FileWriter(config.summary_dir+"/dev/", session.graph)
 
         # saver
         saver = tf.train.Saver(max_to_keep=config.keep)
@@ -415,6 +416,7 @@ class Model(object):
         epoch = 0
         while config.epochs == 0 or epoch < config.epochs:
             epoch += 1
+            print("#"*50)
             print("The {} training epoch".format(epoch))
 
             for batch in get_batch_data(config, "train", self.word2id):
@@ -439,7 +441,7 @@ class Model(object):
 
                     # 验证集 loss F1 EM
                     dev_loss, dev_f1, dev_em = self.validate(session)
-                    self.add_summary(valid_summary_writer, dev_loss, "dev_loss", global_step)
+                    self.add_summary(valid_summary_writer, dev_loss, "dev/loss", global_step)
                     self.add_summary(valid_summary_writer, dev_f1, 'dev/F1', global_step)
                     self.add_summary(valid_summary_writer, dev_em, 'dev/EM', global_step)
                     print("dev: loss:{}, f1:{},em:{}".format(dev_loss, dev_f1, dev_em))

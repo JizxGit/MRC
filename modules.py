@@ -26,9 +26,9 @@ def create_rnn_graph(rnn_layer_num, hidden_size, x, x_mask, scope_name):
     outs = []
     inputs_len = tf.reduce_sum(x_mask, axis=1)
     for i in range(rnn_layer_num):
-        f_cell = tf.nn.rnn_cell.GRUCell(hidden_size)
+        f_cell = tf.nn.rnn_cell.LSTMCell(hidden_size)
         f_cell = tf.nn.rnn_cell.DropoutWrapper(f_cell)
-        b_cell = tf.nn.rnn_cell.GRUCell(hidden_size)
+        b_cell = tf.nn.rnn_cell.LSTMCell(hidden_size)
         b_cell = tf.nn.rnn_cell.DropoutWrapper(b_cell)
         outputs, final_output_states = tf.nn.bidirectional_dynamic_rnn(f_cell, b_cell, x,
                                                                        dtype=tf.float32,
@@ -476,10 +476,10 @@ def SeqAttnMatch(x, y):
     len1, h = x.get_shape().as_list()[1:]
     len2 = y.get_shape().as_list()[1]
 
-    x_proj = tf.layers.dense(tf.reshape(x, [-1, h]), h, activation=tf.nn.tanh,
+    x_proj = tf.layers.dense(tf.reshape(x, [-1, h]), h, activation=tf.nn.relu,
                              kernel_initializer=tf.contrib.layers.xavier_initializer(),
                              name='proj_dense', reuse=False)
-    y_proj = tf.layers.dense(tf.reshape(y, [-1, h]), h, activation=tf.nn.tanh,
+    y_proj = tf.layers.dense(tf.reshape(y, [-1, h]), h, activation=tf.nn.relu,
                              kernel_initializer=tf.contrib.layers.xavier_initializer(),
                              name='proj_dense', reuse=True)
 
@@ -492,7 +492,7 @@ def SeqAttnMatch(x, y):
     return matched_seq
 
 
-def SelfAttn(x):
+def SelfAttn(x,x_mask):
     '''
     Self attention over a sequence.
     :param x: tensor of shape batch * len * hdim
@@ -503,10 +503,10 @@ def SelfAttn(x):
     # 建立一个全连接网络，作为 w
     weight = tf.layers.dense(x_flat, 1, kernel_initializer=tf.contrib.layers.xavier_initializer())  # shape=[batch*len]
     weight = tf.reshape(weight, [-1, len_])  # shape=[batch,len]
-    return tf.nn.softmax(weight)
+    _, mask_weight =masked_softmax(weight,x_mask,1)
+    return mask_weight
 
 
-# TODO 再看一下这个
 def bilinear_sequnce_attention(context, question):
     """ A bilinear attention layer over a sequence seq w.r.t context
 
@@ -534,7 +534,7 @@ def FFN(x):
     :return:
     '''
     len_, h = x.get_shape().as_list()[1:]
-    x_proj = tf.layers.dense(tf.reshape(x, [-1, h]), h, activation=tf.nn.tanh,
+    x_proj = tf.layers.dense(tf.reshape(x, [-1, h]), h, activation=tf.nn.relu,
                              kernel_initializer=tf.contrib.layers.xavier_initializer(),
                              name='proj_dense', reuse=False)
 

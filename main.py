@@ -14,13 +14,13 @@ tf.flags.DEFINE_string("experiment_name", "",
 tf.flags.DEFINE_integer("epochs", 15, "Number of epochs to train. 0 means train indefinitely")
 
 # 超参数
-tf.flags.DEFINE_float("learning_rate", 0.001, "学习率")
-tf.flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
-tf.flags.DEFINE_float("dropout", 0.2, " dropout")
+tf.flags.DEFINE_float("learning_rate", 0.002, "学习率")
+tf.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
+tf.flags.DEFINE_float("dropout", 0.4, " dropout")
 tf.flags.DEFINE_integer("batch_size", 32, "Batch size to use")
 
-tf.flags.DEFINE_integer("rnn_layer_num", 2, "定义多层 RNN")
-tf.flags.DEFINE_integer("hidden_size", 150, "Size of RNN layer")
+tf.flags.DEFINE_integer("rnn_layer_num", 3, "定义多层 RNN")
+tf.flags.DEFINE_integer("hidden_size", 128, "Size of RNN layer")
 tf.flags.DEFINE_integer("hidden_size_encoder", 150, "Size of the hidden states")  # 150 for bidaf ; #200 otherwise
 tf.flags.DEFINE_integer("hidden_size_qp_matching", 150, "Size of the hidden states")
 tf.flags.DEFINE_integer("hidden_size_sm_matching", 50, "Size of the hidden states")
@@ -41,7 +41,7 @@ tf.flags.DEFINE_integer("char_out_size", 100, "num filters char CNN/out size")  
 tf.flags.DEFINE_integer("window_width", 5, "Kernel size for char cnn")  # as suggested in handout
 
 # layer
-tf.flags.DEFINE_bool("add_char_embed", False, "Include char embedding -True/False")
+tf.flags.DEFINE_bool("add_char_embed", True, "Include char embedding -True/False")
 tf.flags.DEFINE_bool("add_highway_layer", False, "Add highway layer to concatenated embeddings -True/False")
 tf.flags.DEFINE_bool("rnet_attention", False, "Perform RNET QP and SM attention-True/False")
 tf.flags.DEFINE_bool("bidaf_attention", False, "Use BIDAF Attention-True/False")

@@ -185,7 +185,7 @@ def get_batch_data(config, data_type, word2id, truncate_long=False):
                 fill_batch_data_pool(batch_data_pool, batch_size, context_len, ques_len, word2id, tag2id, ner2id, context_reader,
                                      context_feature_file_reader, ques_reader, ans_span_reader, truncate_long)
                 end = time.time()
-                print('加载时间 : {}s'.format(end - start))
+                # print('加载时间 : {}s'.format(end - start))
             if len(batch_data_pool) == 0:  # 填充后还是空，说明数据读取没了，退出
                 break
             # 从数据池中拿一个batch_size的数据
