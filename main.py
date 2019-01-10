@@ -4,73 +4,78 @@ import os
 from vocab import get_embedding_word2id_id2word
 from preprocess import main as prepro
 from model import Model
+
 os.environ['CUDA_VISIBLE_DEVICES']='1'
 # 高级层面 选项
-tf.flags.DEFINE_integer('data_num', 100, """Flag of type integer""")
-tf.flags.DEFINE_integer(" ", 0, "选择gpu")
+tf.flags.DEFINE_integer("gpu", 1, "选择gpu")
 tf.flags.DEFINE_string("mode", "train", "Available modes: train / show_examples / official_eval")
 tf.flags.DEFINE_string("experiment_name", "",
                        "Unique name for your experiment. This will create a directory by this name in the experiments/ directory, which will hold all data related to this experiment")
-tf.flags.DEFINE_integer("epochs", 10, "Number of epochs to train. 0 means train indefinitely")
+tf.flags.DEFINE_integer("epochs", 15, "Number of epochs to train. 0 means train indefinitely")
 
 # 超参数
-tf.flags.DEFINE_float("learning_rate", 0.001, "Learning rate.")
+tf.flags.DEFINE_float("learning_rate", 0.001, "学习率")
 tf.flags.DEFINE_float("max_gradient_norm", 5.0, "Clip gradients to this norm.")
-tf.flags.DEFINE_float("dropout", 0.2, "Fraction of units randomly dropped on non-recurrent connections.")
-tf.flags.DEFINE_integer("batch_size", 48, "Batch size to use")
+tf.flags.DEFINE_float("dropout", 0.2, " dropout")
+tf.flags.DEFINE_integer("batch_size", 32, "Batch size to use")
+
+tf.flags.DEFINE_integer("rnn_layer_num", 2, "定义多层 RNN")
+tf.flags.DEFINE_integer("hidden_size", 150, "Size of RNN layer")
 tf.flags.DEFINE_integer("hidden_size_encoder", 150, "Size of the hidden states")  # 150 for bidaf ; #200 otherwise
 tf.flags.DEFINE_integer("hidden_size_qp_matching", 150, "Size of the hidden states")
 tf.flags.DEFINE_integer("hidden_size_sm_matching", 50, "Size of the hidden states")
 tf.flags.DEFINE_integer("hidden_size_fully_connected", 200, "Size of the hidden states")
-tf.flags.DEFINE_integer("context_len", 300, "The maximum context length of your model")
-tf.flags.DEFINE_integer("ques_len", 30, "The maximum question length of your model")
-tf.flags.DEFINE_integer("embedding_size", 300,"Size of the pretrained word vectors. This needs to be one of the available GloVe dimensions: 50/100/200/300")
-tf.flags.DEFINE_integer("hidden_size_modeling", 150, "Size of modeling layer")  #
 
-# char
-tf.flags.DEFINE_integer("word_len", 16, "The maximum word length of your model")
-tf.flags.DEFINE_integer("char_embedding_size", 8, "Size of char embedding")  #as suggested in handout
-tf.flags.DEFINE_integer("char_out_size", 100, "num filters char CNN/out size") # same as filer size; as suggested in handout
-tf.flags.DEFINE_integer("window_width", 5, "Kernel size for char cnn") #as suggested in handout
+tf.flags.DEFINE_integer("context_len", 300, " 文章最长长度")
+tf.flags.DEFINE_integer("ques_len", 30, "问题最长长度")
+tf.flags.DEFINE_integer("word_len", 16, "单词最长长度")
+tf.flags.DEFINE_integer("embedding_size", 300, "预训练的词向量维度")
+tf.flags.DEFINE_integer("pos_embedding_size", 12, "pos embedding 的维度")
+tf.flags.DEFINE_integer("pos_nums", 57, "词性的种类")
+tf.flags.DEFINE_integer("ner_embedding_size", 10, "ner embedding 的维度")
+tf.flags.DEFINE_integer("ner_nums", 20, "命名实体的种类")
+
+# char cnn 的参数
+tf.flags.DEFINE_integer("char_embedding_size", 8, "char embedding 的维度")
+tf.flags.DEFINE_integer("char_out_size", 100, "num filters char CNN/out size")  # same as filer size; as suggested in handout
+tf.flags.DEFINE_integer("window_width", 5, "Kernel size for char cnn")  # as suggested in handout
 
 # layer
-tf.flags.DEFINE_bool("add_char_embed", True, "Include char embedding -True/False")
-tf.flags.DEFINE_bool("add_highway_layer", True, "Add highway layer to concatenated embeddings -True/False")
+tf.flags.DEFINE_bool("add_char_embed", False, "Include char embedding -True/False")
+tf.flags.DEFINE_bool("add_highway_layer", False, "Add highway layer to concatenated embeddings -True/False")
 tf.flags.DEFINE_bool("rnet_attention", False, "Perform RNET QP and SM attention-True/False")
-tf.flags.DEFINE_bool("bidaf_attention", True, "Use BIDAF Attention-True/False")
+tf.flags.DEFINE_bool("bidaf_attention", False, "Use BIDAF Attention-True/False")
 tf.flags.DEFINE_bool("answer_pointer_RNET", False, "Use Answer Pointer from RNET-True/False")
+tf.flags.DEFINE_bool("Chen", True, "Use Chen Danqi 的模型")
 tf.flags.DEFINE_bool("bidaf_pointer", False, "Use bidaf_poiter")
-tf.flags.DEFINE_bool("answer_pointer", True, "Use Answer Pointer from RNET-True/False")
+tf.flags.DEFINE_bool("answer_pointer", False, "Use Answer Pointer from RNET-True/False")
 tf.flags.DEFINE_bool("smart_span", False, "Select start and end idx based on smart conditions-True/False")
 
 # 训练时保存，验证频率
-tf.flags.DEFINE_integer("print_every", 1, "How many iterations to do per print.")
-tf.flags.DEFINE_integer("save_every", 600, "How many iterations to do per save.")
-tf.flags.DEFINE_integer("eval_every", 600,
-                        "How many iterations to do per calculating loss/f1/em on dev set. Warning: this is fairly time-consuming so don't do it too often.")
-tf.flags.DEFINE_integer("keep", 1,
-                        "How many checkpoints to keep. 0 indicates keep all (you shouldn't need to do keep all though - it's very storage intensive).")
+tf.flags.DEFINE_integer("print_every", 10, "多少 iterations 打印一次")
+tf.flags.DEFINE_integer("save_every", 600, "多少 iterations 保存一次模型")
+tf.flags.DEFINE_integer("eval_every", 600, "多少 iterations 计算验证集上的 loss/f1/em，这很耗时，不要太频繁")
+tf.flags.DEFINE_integer("keep", 1, "保存多少个 checkpoints， 0 表示保存全部 (这很占存储).")
 
 # 文件位置
 # MAIN_DIR = os.path.relpath(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MAIN_DIR = './'
-DATA_DIR = os.path.join(MAIN_DIR, "data")  # 数据目录
-RAW_DATA_DIR = os.path.join(DATA_DIR, "raw")  # 原始json数据目录
-PREPRO_DATA_DIR = os.path.join(DATA_DIR, "data")  # 预处理后的数据目录
-EMBED_DIR = os.path.join(MAIN_DIR, "embedding")  # glove已经处理后的embed目录
+ROOT_DIR = './'
 
-MODEL_DIR = os.path.join(MAIN_DIR, "model")  # 模型保存根目录
+DATA_DIR = os.path.join(ROOT_DIR, "data")  # 数据相关的根目录
+RAW_DATA_DIR = os.path.join(DATA_DIR, "raw")  # 原始json数据目录
+TRAIN_DATA_DIR = os.path.join(DATA_DIR, "data")  # 预处理后的数据目录
+EMBED_DIR = os.path.join(ROOT_DIR, "embedding")  # glove已经处理后的embed目录
+MODEL_DIR = os.path.join(ROOT_DIR, "model")  # 模型保存根目录
 CHECK_POINT_DIR = os.path.join(MODEL_DIR, "checkpoint")  # 模型保存目录
 BEST_MODEL_DIR = os.path.join(MODEL_DIR, "best_checkpoint")  # 最好的模型保存目录
-
-SUMMARY_DIR = os.path.join(MAIN_DIR, "summary")  # tensorboard 目录
+SUMMARY_DIR = os.path.join(ROOT_DIR, "summary")  # tensorboard 目录
 
 tf.flags.DEFINE_string("ckpt_path", CHECK_POINT_DIR, "Training directory to save the model parameters and other info.")
 tf.flags.DEFINE_string("best_model_ckpt_path", BEST_MODEL_DIR, "Training directory to save the model parameters and other info.")
 tf.flags.DEFINE_string("embedding_dir", EMBED_DIR, "Path to glove .txt file. Defaults to data/glove.6B.{embedding_size}d.txt")
 tf.flags.DEFINE_string("embedding_file", "", "Where to find pretrained embeding for training.")
 tf.flags.DEFINE_string("raw_data_dir", RAW_DATA_DIR, "Where to find raw SQuAD data for training. Defaults to data/")
-tf.flags.DEFINE_string("prepro_data_dir", PREPRO_DATA_DIR, "Where to find preprocessed SQuAD data for training. Defaults to data/")
+tf.flags.DEFINE_string("data_dir", TRAIN_DATA_DIR, "Where to find preprocessed SQuAD data for training. Defaults to data/")
 tf.flags.DEFINE_string("summary_dir", SUMMARY_DIR, "Where to find preprocessed SQuAD data for training. Defaults to data/")
 
 
@@ -83,7 +88,7 @@ def initial_model(session, ckpt_path, expect_exists=False):
     ckpt = tf.train.get_checkpoint_state(ckpt_path)
     v2_path = ckpt.model_checkpoint_path + ".index" if ckpt else ""
     if ckpt and (tf.gfile.Exists(ckpt.model_checkpoint_path) or tf.gfile.Exists(v2_path)):
-        print("Reading model parameters from {}" .format(ckpt.model_checkpoint_path))
+        print("Reading model parameters from {}".format(ckpt.model_checkpoint_path))
         saver = tf.train.Saver()
         saver.restore(session, ckpt.model_checkpoint_path)
     else:
@@ -96,6 +101,8 @@ def initial_model(session, ckpt_path, expect_exists=False):
 
 def main(unused_argv):
     config = tf.flags.FLAGS
+    # 设置 GPU
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(config.gpu)
 
     # 创建必须的文件夹
     if not os.path.exists(SUMMARY_DIR):
@@ -110,14 +117,6 @@ def main(unused_argv):
     # 处理原始数据，保存处理后的数据
     prepro(config)
 
-    # 训练集数据与验证集数据
-    train_context_path = os.path.join(config.prepro_data_dir, "train.context")
-    train_ques_path = os.path.join(config.prepro_data_dir, "train.question")
-    train_ans_span_path = os.path.join(config.prepro_data_dir, "train.span")
-    dev_context_path = os.path.join(config.prepro_data_dir, "dev.context")
-    dev_ques_path = os.path.join(config.prepro_data_dir, "dev.question")
-    dev_ans_span_path = os.path.join(config.prepro_data_dir, "dev.span")
-
     # 创建模型
     qa_model = Model(config, embed_matrix, word2id, id2word)
 
@@ -128,7 +127,7 @@ def main(unused_argv):
     if config.mode == 'train':
         with tf.Session(config=sess_config) as sess:
             initial_model(sess, config.ckpt_path)
-            qa_model.train(sess, train_context_path, train_ques_path, train_ans_span_path, dev_context_path, dev_ques_path, dev_ans_span_path)
+            qa_model.train(sess)
 
     elif config.mode == 'show_examples':
         pass

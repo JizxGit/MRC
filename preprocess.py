@@ -176,8 +176,6 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
     indices = range(len(examples))
     np.random.shuffle(indices)
 
-    print(out_dir + data_type)
-
     print "Number of (context, question, answer) triples discarded due to char -> token mapping problems: ", num_mappingprob
     print "Number of (context, question, answer) triples discarded because character-based answer span is unaligned with tokenization: ", num_tokenprob
     with codecs.open(os.path.join(out_dir, data_type) + '.context', 'w', encoding='utf-8') as context_writer, \
@@ -198,25 +196,27 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
 
 def main(FLAGS):
     raw_data_dir = FLAGS.raw_data_dir  # 原始json文件目录
-    prepro_data_dir = FLAGS.prepro_data_dir  # 预处理后的数据存放目录
-    if not os.path.exists(prepro_data_dir):
-        os.makedirs(prepro_data_dir)
+    data_dir = FLAGS.data_dir  # 预处理后的数据存放目录
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
 
     train_data = 'train-v1.1.json'
     dev_data = 'dev-v1.1.json'
 
-    train_context_path = os.path.join(FLAGS.prepro_data_dir, "train.context")
-    train_ques_path = os.path.join(FLAGS.prepro_data_dir, "train.question")
-    train_ans_span_path = os.path.join(FLAGS.prepro_data_dir, "train.span")
-    dev_context_path = os.path.join(FLAGS.prepro_data_dir, "dev.context")
-    dev_ques_path = os.path.join(FLAGS.prepro_data_dir, "dev.question")
-    dev_ans_span_path = os.path.join(FLAGS.prepro_data_dir, "dev.span")
+    train_context_path = os.path.join(data_dir, "train.context")
+    train_context_feature_path = os.path.join(data_dir, "train.context_feature")
+    train_ques_path = os.path.join(data_dir, "train.question")
+    train_ans_span_path = os.path.join(data_dir, "train.span")
+    dev_context_path = os.path.join(data_dir, "dev.context")
+    dev_context_feature_path = os.path.join(data_dir, "dev.context_feature")
+    dev_ques_path = os.path.join(data_dir, "dev.question")
+    dev_ans_span_path = os.path.join(data_dir, "dev.span")
 
-    if not os.path.exists(train_context_path) or not os.path.exists(train_ques_path) or not os.path.exists(train_ans_span_path):
-        preprocess_and_save_data('train', os.path.join(raw_data_dir, train_data), prepro_data_dir)
+    if not os.path.exists(train_context_path) or not os.path.exists(train_context_feature_path) or not os.path.exists(train_ques_path) or not os.path.exists(train_ans_span_path):
+        preprocess_and_save_data('train', os.path.join(raw_data_dir, train_data), data_dir)
 
-    if not os.path.exists(dev_context_path) or not os.path.exists(dev_ques_path) or not os.path.exists(dev_ans_span_path):
-        preprocess_and_save_data('dev', os.path.join(raw_data_dir, dev_data), prepro_data_dir)
+    if not os.path.exists(dev_context_path) or not os.path.exists(dev_context_feature_path) or not os.path.exists(dev_ques_path) or not os.path.exists(dev_ans_span_path):
+        preprocess_and_save_data('dev', os.path.join(raw_data_dir, dev_data), data_dir)
 
 
 if __name__ == '__main__':

@@ -1,6 +1,6 @@
 # _*_ coding:utf8 _*_
 import tensorflow as tf
-
+import numpy as np
 
 class RNNEncoder(object):
     def __init__(self, hidden_size, keep_prob):
@@ -20,6 +20,27 @@ class RNNEncoder(object):
             output = tf.concat([fw_output, bw_output], 2)
             output = tf.nn.dropout(output, self.keep_prob)
             return output
+
+
+def create_rnn_graph(rnn_layer_num, hidden_size, x, x_mask, scope_name):
+    outs = []
+    inputs_len = tf.reduce_sum(x_mask, axis=1)
+    for i in range(rnn_layer_num):
+        f_cell = tf.nn.rnn_cell.GRUCell(hidden_size)
+        f_cell = tf.nn.rnn_cell.DropoutWrapper(f_cell)
+        b_cell = tf.nn.rnn_cell.GRUCell(hidden_size)
+        b_cell = tf.nn.rnn_cell.DropoutWrapper(b_cell)
+        outputs, final_output_states = tf.nn.bidirectional_dynamic_rnn(f_cell, b_cell, x,
+                                                                       dtype=tf.float32,
+                                                                       sequence_length=inputs_len,
+                                                                       scope=scope_name + '_rnn{}'.format(i))
+
+        # outputs: A tuple (output_fw, output_bw)
+        x = tf.concat(outputs, axis=-1)  # 将前后向的输出拼接起来
+        outs.append(x)
+
+    res = tf.concat(outs, axis=-1)  # 最后将每一层的输出拼接在一起
+    return res
 
 
 class BasicAttention(object):
@@ -321,7 +342,7 @@ class Answer_Pointer(object):
         self.W_vQ = self.create_weights(self.hidden_size_encoder, self.hidden_size_encoder, name='W_vQ')
 
         ## Same size as question hidden
-        self.W_VrQ = self.create_weights(self.question_len, self.hidden_size_encoder,name='W_VrQ')
+        self.W_VrQ = self.create_weights(self.question_len, self.hidden_size_encoder, name='W_VrQ')
         self.v_qpool = self.create_vector(self.hidden_size_encoder, name='v_qpool')
 
         ## Initializations for answer pointer
@@ -384,7 +405,7 @@ class Answer_Pointer(object):
             W_ha_h_i1a = self.matrix_multiplication(concat_h_i1a, self.W_ha)
 
             tanh = tf.tanh(W_hp_h_p + W_ha_h_i1a)
-            s_t = self.matrix_multiplication(tanh, tf.reshape(self.v_ptr,[-1,1]))  # [batch_size,context_len,1]
+            s_t = self.matrix_multiplication(tanh, tf.reshape(self.v_ptr, [-1, 1]))  # [batch_size,context_len,1]
             s_t = tf.squeeze(s_t, axis=2)
 
             # 第二个公式
@@ -401,14 +422,13 @@ class Answer_Pointer(object):
                 self.ans_ptr_state = self.ans_ptr_cell.zero_state(batch_size=cur_batch_size, dtype=tf.float32)  # TODO 论文中是说使用r_Q进行初始化？？
                 h_a, _ = self.ans_ptr_cell(c_t, self.ans_ptr_state)
 
-        return p,logits
+        return p, logits
+
 
 class Bidaf_output_layer(object):
     def __init__(self, context_len, concat_len):
         self.context_len = context_len
         self.concat_len = concat_len
-
-        pass
 
     def build_graph(self, blended_represent, bidaf_output, context_mask):
         w1 = tf.get_variable("w1", shape=[self.concat_len], initializer=tf.contrib.layers.xavier_initializer())  # [10h,1]
@@ -442,3 +462,82 @@ def masked_softmax(logits, mask, dim):
     masked_logits = tf.add(logits, mask_)  # 然后与logits相加
     prob_distribution = tf.nn.softmax(masked_logits, dim)  # dim=1,表示对第二个维度进行softmax
     return masked_logits, prob_distribution
+
+
+def SeqAttnMatch(x, y):
+    """Given sequences x and y, match sequence y to each element in x.
+
+    Args:
+        x: tensor of shape batch x len1 x h
+        y: tensor of shape batch x len2 x h
+    Return:
+        matched_seq = batch * len1 * h
+    """
+    len1, h = x.get_shape().as_list()[1:]
+    len2 = y.get_shape().as_list()[1]
+
+    x_proj = tf.layers.dense(tf.reshape(x, [-1, h]), h, activation=tf.nn.tanh,
+                             kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                             name='proj_dense', reuse=False)
+    y_proj = tf.layers.dense(tf.reshape(y, [-1, h]), h, activation=tf.nn.tanh,
+                             kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                             name='proj_dense', reuse=True)
+
+    x_proj = tf.reshape(x_proj, [-1, len1, h])
+    y_proj = tf.reshape(y_proj, [-1, len2, h])
+    scores = tf.einsum('ijk,ikq->ijq', x_proj, tf.transpose(y_proj, [0, 2, 1]))  # b x len1 x len2
+    alpha_flat = tf.nn.softmax(tf.reshape(scores, [-1, len2]))
+    alpha = tf.reshape(alpha_flat, [-1, len1, len2])
+    matched_seq = tf.einsum('ijk,ikq->ijq', alpha, y)
+    return matched_seq
+
+
+def SelfAttn(x):
+    '''
+    Self attention over a sequence.
+    :param x: tensor of shape batch * len * hdim
+    :return: tensor of shape batch * len
+    '''
+    len_, hdim = x.get_shape().as_list()[1:]
+    x_flat = tf.reshape(x, [-1, hdim])  # [batch * len , hdim]
+    # 建立一个全连接网络，作为 w
+    weight = tf.layers.dense(x_flat, 1, kernel_initializer=tf.contrib.layers.xavier_initializer())  # shape=[batch*len]
+    weight = tf.reshape(weight, [-1, len_])  # shape=[batch,len]
+    return tf.nn.softmax(weight)
+
+
+# TODO 再看一下这个
+def bilinear_sequnce_attention(context, question):
+    """ A bilinear attention layer over a sequence seq w.r.t context
+
+    Args:
+        context: 3D tensor of shape b x l x h1
+        question: 2D tensor of shape b x l2
+
+    Return:
+        tensor of shape b x l with weight coefficients
+    """
+
+    len_, h1 = context.get_shape().as_list()[1:3]
+    question = tf.layers.dense(question, h1, kernel_initializer=tf.contrib.layers.xavier_initializer())
+    question = tf.reshape(question, [-1, h1, 1])  # b x h1 x 1
+    z = tf.einsum('ijk,ikq->ijq', context, question)
+    z = tf.reshape(z, [-1, len_])  # b x l
+    return z
+
+
+# TODO 完成 FFN
+def FFN(x):
+    '''
+    Feed_Forward_Networks: FFN(x) = W2 ReLU(W1x+b1)+b2
+    :param x: tensor of shape : batch * len * hdim
+    :return:
+    '''
+    len_, h = x.get_shape().as_list()[1:]
+    x_proj = tf.layers.dense(tf.reshape(x, [-1, h]), h, activation=tf.nn.tanh,
+                             kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                             name='proj_dense', reuse=False)
+
+    y_proj = tf.layers.dense(tf.reshape(x_proj, [-1, h]), h,
+                             kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                             name='proj_dense', reuse=False)

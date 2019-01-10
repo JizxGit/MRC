@@ -23,6 +23,11 @@ vocab_ent = ['<PAD>', '<UNK>', 'ORG', 'DATE', 'PERSON', 'GPE', 'CARDINAL', 'NORP
              'WORK_OF_ART', 'PERCENT', 'EVENT', 'ORDINAL', 'MONEY', 'FAC', 'QUANTITY',
              'LAW', 'TIME', 'LANGUAGE', 'PRODUCT']
 
+unique_chars = ['!', '"', '#', '$', '%', '&', "*", "'", '(', ')', '+', ',', '-', '.', '/', '0', '1', '2', '3',
+                '4', '5', '6', '7', '8', '9', ':', ';', '<', '=', '>', '?', '[', ']', '^', 'a', 'b', 'c', 'd',
+                'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+                '~', ]
+
 
 def load_file(file_name, msg=None):
     if msg is not None:
@@ -99,6 +104,20 @@ def get_embedding_word2id_id2word(embedding_path, pretrained_embed_filename, dim
 def get_word2id(word2id_file):
     word2id = load_file(word2id_file, 'word2id')
     return word2id
+
+
+def get_char2id():
+    CHAR_PAD_ID = 0
+    CHAR_UNK_ID = 1
+    _CHAR_PAD = '^'
+    _CHAR_UNK = '@'
+
+    num_chars = len(unique_chars)
+    id2char = {id: char for id, char in enumerate(unique_chars, 2)}
+    id2char[CHAR_PAD_ID] = _CHAR_PAD
+    id2char[CHAR_UNK_ID] = _CHAR_UNK
+    char2id = {char: id for id, char in id2char.iteritems()}
+    return char2id, id2char, num_chars
 
 
 def get_tag2id():

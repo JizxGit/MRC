@@ -73,3 +73,18 @@ nlp = spacy.load('en_core_web_sm')
 # print(answer_tokens)
 
 # stack中的axis就是表示对数组 arr 中的第几维的元素进行打包（用中括号[]进行元素打包）
+import tensorflow as tf
+x_=tf.placeholder(tf.int32, shape=[None, 10])
+y_=tf.placeholder(tf.int32, shape=[None,])
+y=tf.layers.dense(tf.cast(x_,tf.float32), 3, activation=tf.nn.tanh,
+                             kernel_initializer=tf.contrib.layers.xavier_initializer())
+loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=y, labels=y_)
+loss=tf.reduce_mean(loss)
+with tf.Session() as sess:
+    tf.global_variables_initializer().run()
+    feed_dict={
+        x_:np.random.randn(3,10),
+        y_:np.array([0,1,3])
+    }
+    loss=sess.run([loss],feed_dict)
+    print(loss)
