@@ -1,9 +1,12 @@
 # -*- coding: utf8 -*-
 import tensorflow as tf
 import os
+import json
+import codecs
 from vocab import get_embedding_word2id_id2word
 from preprocess import main as prepro
 from model import Model
+from evaluate import print_test_score
 
 os.environ['CUDA_VISIBLE_DEVICES']='1'
 # 高级层面 选项
@@ -14,7 +17,7 @@ tf.flags.DEFINE_string("experiment_name", "",
 tf.flags.DEFINE_integer("epochs", 15, "Number of epochs to train. 0 means train indefinitely")
 
 # 超参数
-tf.flags.DEFINE_float("learning_rate", 0.002, "学习率")
+tf.flags.DEFINE_float("learning_rate", 0.1, "学习率")
 tf.flags.DEFINE_float("max_gradient_norm", 10.0, "Clip gradients to this norm.")
 tf.flags.DEFINE_float("dropout", 0.4, " dropout")
 tf.flags.DEFINE_integer("batch_size", 32, "Batch size to use")
@@ -64,7 +67,9 @@ ROOT_DIR = './'
 DATA_DIR = os.path.join(ROOT_DIR, "data")  # 数据相关的根目录
 RAW_DATA_DIR = os.path.join(DATA_DIR, "raw")  # 原始json数据目录
 TRAIN_DATA_DIR = os.path.join(DATA_DIR, "data")  # 预处理后的数据目录
+
 EMBED_DIR = os.path.join(ROOT_DIR, "embedding")  # glove已经处理后的embed目录
+
 MODEL_DIR = os.path.join(ROOT_DIR, "model")  # 模型保存根目录
 CHECK_POINT_DIR = os.path.join(MODEL_DIR, "checkpoint")  # 模型保存目录
 BEST_MODEL_DIR = os.path.join(MODEL_DIR, "best_checkpoint")  # 最好的模型保存目录
@@ -77,6 +82,7 @@ tf.flags.DEFINE_string("embedding_file", "", "Where to find pretrained embeding 
 tf.flags.DEFINE_string("raw_data_dir", RAW_DATA_DIR, "Where to find raw SQuAD data for training. Defaults to data/")
 tf.flags.DEFINE_string("data_dir", TRAIN_DATA_DIR, "Where to find preprocessed SQuAD data for training. Defaults to data/")
 tf.flags.DEFINE_string("summary_dir", SUMMARY_DIR, "Where to find preprocessed SQuAD data for training. Defaults to data/")
+tf.flags.DEFINE_string("predict_answer_file", "./data/prediction.json", "保存预测的答案")
 
 
 # tf.flags.DEFINE_string("ckpt_load_dir", "","For official_eval mode, which directory to load the checkpoint fron. You need to specify this for official_eval mode.")
@@ -132,7 +138,17 @@ def main(unused_argv):
     elif config.mode == 'show_examples':
         pass
     elif config.mode == 'official_eval':
-        pass
+        with tf.Session(config=sess_config) as sess:
+            # 1.获取最好的保存的模型
+            initial_model(sess, config.best_model_ckpt_path, expect_exists=True)
+            # 2.进行预测，保存预测结果
+            uuid2ans = qa_model.test(sess)
+            with codecs.open(config.predict_answer_file,'w',encoding='utf-8') as f:
+                ans = unicode(json.dumps(uuid2ans, ensure_ascii=False))
+                f.write(ans)
+            # 3.评价
+            print_test_score()
+
     else:
         raise Exception("未知的mode：「」".format(config.mode))
 

@@ -139,6 +139,7 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
 
             for qa in qas:
                 question = qa['question']
+                uuid = qa['id']
                 question_tokens, question_poses, question_ners, question_lemmas, _ = tokenize_pos_ner(question)
                 question_tokens_lower = [w.lower() for w in question_tokens]
                 question_tokens_set = set(question_tokens)
@@ -171,7 +172,7 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
                 feature = zip(context_poses, context_ners, context_tf, exact_match, lower_match, lemma_match)
                 context_feature = [str(f) for f in feature]
                 examples.append((SPLIT_TOKEN.join(context_tokens), SPLIT_TOKEN.join(question_tokens), SPLIT_TOKEN.join(answer_tokens),
-                                 SPLIT_TOKEN.join(answer_span), SPLIT_TOKEN.join(context_feature)))
+                                 SPLIT_TOKEN.join(answer_span), SPLIT_TOKEN.join(context_feature),uuid))
     # 随机打乱
     indices = range(len(examples))
     np.random.shuffle(indices)
@@ -182,14 +183,16 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
             codecs.open(os.path.join(out_dir, data_type) + '.question', 'w', encoding='utf-8') as question_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.answer', 'w', encoding='utf-8') as answer_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.span', 'w', encoding='utf-8') as answer_span_writer, \
+            codecs.open(os.path.join(out_dir, data_type) + '.uuid', 'w', encoding='utf-8') as uuid_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.context_feature', 'w', encoding='utf-8') as context_feature_writer:
 
         for i in indices:
-            context, question, answer, answer_span, context_feature = examples[i]
+            context, question, answer, answer_span, context_feature, uuid = examples[i]
             context_writer.write(context.strip() + '\n')
             question_writer.write(question.strip() + '\n')
             answer_writer.write(answer.strip() + '\n')
             answer_span_writer.write(str(answer_span) + '\n')
+            uuid_writer.write(uuid)
             context_feature_writer.write(context_feature.strip() + '\n')
     print("{}/{} examples saved".format(len(examples), len(examples) + num_tokenprob + num_mappingprob))
 

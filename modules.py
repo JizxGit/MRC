@@ -492,7 +492,7 @@ def SeqAttnMatch(x, y):
     return matched_seq
 
 
-def SelfAttn(x,x_mask):
+def SelfAttn(x, x_mask):
     '''
     Self attention over a sequence.
     :param x: tensor of shape batch * len * hdim
@@ -503,7 +503,7 @@ def SelfAttn(x,x_mask):
     # 建立一个全连接网络，作为 w
     weight = tf.layers.dense(x_flat, 1, kernel_initializer=tf.contrib.layers.xavier_initializer())  # shape=[batch*len]
     weight = tf.reshape(weight, [-1, len_])  # shape=[batch,len]
-    _, mask_weight =masked_softmax(weight,x_mask,1)
+    _, mask_weight =masked_softmax(weight, x_mask, 1)
     return mask_weight
 
 
@@ -541,3 +541,5 @@ def FFN(x):
     y_proj = tf.layers.dense(tf.reshape(x_proj, [-1, h]), h,
                              kernel_initializer=tf.contrib.layers.xavier_initializer(),
                              name='proj_dense', reuse=False)
+
+# def diag_self_atten(x)

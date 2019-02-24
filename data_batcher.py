@@ -20,8 +20,7 @@ class Batch(object):
     """A class to hold the information needed for a training batch"""
 
     def __init__(self, context_ids, context_mask, context_tokens, context_poses, context_ners, context_features, ques_ids, ques_mask, ques_tokens,
-                 ans_span, ans_tokens,
-                 uuids=None):
+                 ans_span, ans_tokens, uuids=None):
         """
         Inputs:
           {context/qn}_ids: Numpy arrays.
@@ -97,7 +96,7 @@ def get_context_feature(context_feature_line, tag2id, ner2id):
 
 
 def fill_batch_data_pool(batches, batch_size, context_len, ques_len, word2id, tag2id, ner2id, context_reader, context_feature_reader, ques_reader,
-                         ans_span_reader, truncate_long):
+                         uuid_reader, ans_span_reader, truncate_long):
     # 从文件中读取到的以空格为划分的一行数据
     data_pool = []  # 数据池，当做缓冲区，用于打乱数据集
 
@@ -107,6 +106,8 @@ def fill_batch_data_pool(batches, batch_size, context_len, ques_len, word2id, ta
         ques_line = ques_reader.readline()
         ans_span_line = ans_span_reader.readline()
         context_feature_line = context_feature_reader.readline()
+        uuid = uuid_reader.readline()
+
         # 文件读取完了则退出
         if not (context_line and ques_line and ans_span_line and context_feature_line):
             break
@@ -138,15 +139,14 @@ def fill_batch_data_pool(batches, batch_size, context_len, ques_len, word2id, ta
                 ques_ids = ques_ids[:ques_len]
             else:
                 continue
-        data_pool.append(
-            (context_ids, context_tokens, context_pos_ids, context_ner_ids, context_tf_match, ques_ids, ques_tokens, ans_span, ans_tokens))
+        data_pool.append((uuid, context_ids, context_tokens, context_pos_ids, context_ner_ids, context_tf_match, ques_ids, ques_tokens, ans_span, ans_tokens))
 
     # 制作batch数据
     # random.shuffle(data_pool)
     for i in range(0, len(data_pool), batch_size):
-        batch_context_ids, batch_context_tokens, batch_context_pos_ids, batch_context_ner_ids, batch_context_tf_match, batch_ques_ids, batch_ques_tokens, batch_ans_span, batch_ans_tokens = zip(
+        batch_uuids, batch_context_ids, batch_context_tokens, batch_context_pos_ids, batch_context_ner_ids, batch_context_tf_match, batch_ques_ids, batch_ques_tokens, batch_ans_span, batch_ans_tokens = zip(
             *data_pool[i: i + batch_size])
-        batches.append((batch_context_ids, batch_context_tokens, batch_context_pos_ids, batch_context_ner_ids, batch_context_tf_match, batch_ques_ids,
+        batches.append((batch_uuids, batch_context_ids, batch_context_tokens, batch_context_pos_ids, batch_context_ner_ids, batch_context_tf_match, batch_ques_ids,
                         batch_ques_tokens, batch_ans_span, batch_ans_tokens))
 
 
@@ -172,24 +172,26 @@ def get_batch_data(config, data_type, word2id, truncate_long=False):
     context_file = os.path.join(config.data_dir, data_type + '.context')  # 文章文件地址
     context_feature_file = os.path.join(config.data_dir, data_type + '.context_feature')  # 文章的特征文件：【pos，ner，tf，exact-match，lower-match，lemma-match】
     ques_file = os.path.join(config.data_dir, data_type + '.question')  # 问题文件地址
+    uuid_file = os.path.join(config.data_dir, data_type + '.uuid')  # 问题 的 uuid
     ans_span_file = os.path.join(config.data_dir, data_type + '.span')  # 答案span文件地址
 
     batch_data_pool = []  # batch_data的数据池，每次从中取出batch_size个数据
     with codecs.open(context_file, 'r', encoding='utf-8') as context_reader, \
             codecs.open(context_feature_file, 'r', encoding='utf-8') as context_feature_file_reader, \
             codecs.open(ques_file, 'r', encoding='utf-8') as ques_reader, \
+            codecs.open(uuid_file, 'r', encoding='utf-8') as uuid_reader, \
             codecs.open(ans_span_file, 'r', encoding='utf-8') as ans_span_reader:
         while True:
             if len(batch_data_pool) == 0:  # 数据池空了，从文件中读取数据
                 start = time.time()
                 fill_batch_data_pool(batch_data_pool, batch_size, context_len, ques_len, word2id, tag2id, ner2id, context_reader,
-                                     context_feature_file_reader, ques_reader, ans_span_reader, truncate_long)
+                                     context_feature_file_reader, ques_reader, uuid_reader,ans_span_reader, truncate_long)
                 end = time.time()
                 # print('加载时间 : {}s'.format(end - start))
             if len(batch_data_pool) == 0:  # 填充后还是空，说明数据读取没了，退出
                 break
             # 从数据池中拿一个batch_size的数据
-            batch_context_ids, batch_context_tokens, batch_context_pos_ids, batch_context_ner_ids, batch_context_features, batch_ques_ids, \
+            batch_uuids, batch_context_ids, batch_context_tokens, batch_context_pos_ids, batch_context_ner_ids, batch_context_features, batch_ques_ids, \
             batch_ques_tokens, batch_ans_span, batch_ans_tokens = batch_data_pool.pop(0)
 
             # 进行pad
@@ -211,7 +213,7 @@ def get_batch_data(config, data_type, word2id, truncate_long=False):
             batch_ques_mask = (batch_ques_ids != PAD_ID).astype(np.int32)
 
             batch = Batch(batch_context_ids, batch_context_mask, batch_context_tokens, batch_context_pos_ids, batch_context_ner_ids,
-                          batch_context_features, batch_ques_ids, batch_ques_mask, batch_ques_tokens, batch_ans_span, batch_ans_tokens)
+                          batch_context_features, batch_ques_ids, batch_ques_mask, batch_ques_tokens, batch_ans_span, batch_ans_tokens, batch_uuids)
             yield batch
 
 
@@ -234,9 +236,11 @@ if __name__ == '__main__':
         print(batch.context_ners.shape)
         print(batch.context_features.shape)
         print(batch.context_ids.shape)
+        print(batch.uuids[0])
+        print(' '.join(batch.ques_tokens[0]))
         print("----------")
         # k += batch.batch_size
         k += 1
-        if k > 100:
+        if k > 10:
             break
     print("size:", k)

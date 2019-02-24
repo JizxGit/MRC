@@ -3,9 +3,11 @@ import numpy as np
 import tensorflow as tf
 import os
 import time
+import codecs
+import json
 from modules import *
 from data_batcher import get_batch_data
-from evaluate import f1_score, em_score
+from evaluate import f1_score, em_score,print_test_score
 from tensorflow.python.ops import variable_scope as vs
 from vocab import get_char2id
 
@@ -79,6 +81,7 @@ class Model(object):
             context_pos_emb = tf.nn.embedding_lookup(pos_embedding_matrix, self.context_pos)
             context_pos_emb = tf.nn.dropout(context_pos_emb, keep_prob=self.keep_prob)
             print("context_pos_emb :", context_pos_emb.shape)
+
             # ner embedding
             ner_embedding_matrix = tf.get_variable(name="ner_embs", shape=[self.FLAGS.ner_nums, self.FLAGS.ner_embedding_size],
                                                    initializer=tf.truncated_normal_initializer(stddev=1), trainable=False)
@@ -202,9 +205,15 @@ class Model(object):
         # last_dim=context_hiddens.shape().as_list()[-1]
         if self.FLAGS.Chen:
 
-            # TODO 文章的 attention 与 self attention
+            # 文章的 attention
+            atten_context_hiddens = SeqAttnMatch(context_hiddens,ques_hiddens)
+            context_hiddens=tf.concat([context_hiddens,atten_context_hiddens],axis=2)
+            # self attention
+            #TODO
+            with vs.variable_scope("context_encoder2"):
+                context_hiddens = create_rnn_graph(self.FLAGS.rnn_layer_num, self.FLAGS.hidden_size, context_hiddens, self.context_mask, "context2")  # [batch,contex_len,4d]
+            # self.bug = tf.check_numerics(context_hiddens, "NaN")
 
-            pass
 
         elif self.FLAGS.bidaf_attention:
 
@@ -356,6 +365,39 @@ class Model(object):
         print("Computed dev loss over %i examples in %.2f seconds" % (total_num_examples, toc - tic))
         return dev_loss, dev_f1, dev_em
 
+    def test(self,session):
+        '''
+        使用dev 数据作为测试数据，进行模型的评价
+
+        :param session:
+        :return:
+        '''
+
+        print("Calculating test F1\EM...")
+        tic = time.time()
+        uuid2ans = {}
+
+        for batch in get_batch_data(self.FLAGS, "dev", self.word2id):
+            pred_start_pos, pred_end_pos, loss_avg = self.get_answer_pos(session, batch)  # pred_end_pos 是 narray类型
+            pred_ans_start = pred_start_pos.tolist()
+            pred_ans_end = pred_end_pos.tolist()
+
+            for i,(pred_start,pred_end) in enumerate(zip(pred_ans_start,pred_ans_end)):
+                context_tokens = batch.context_tokens[i]  # list of strings
+                # 确保预测的范围在文章长度内
+                assert pred_start in range(len(context_tokens))
+                assert pred_end in range(len(context_tokens))
+
+                # 截取预测的答案
+                pred_ans_tokens = context_tokens[pred_start: pred_end + 1]  # list of strings
+                uuid = batch.uuids[i]
+                uuid2ans[uuid] = ' '.join(pred_ans_tokens)
+
+        toc = time.time()
+        print("Computed test F1\EM in %.2f seconds" % ( toc - tic))
+        return uuid2ans
+
+
     def get_batch_f1_em(self, session, batch):
         '''
         一个batch数据的f1，em，loss 的平均值
@@ -440,11 +482,20 @@ class Model(object):
                     print("train: f1:{},em:{}".format(train_f1, train_em))
 
                     # 验证集 loss F1 EM
-                    dev_loss, dev_f1, dev_em = self.validate(session)
-                    self.add_summary(valid_summary_writer, dev_loss, "dev/loss", global_step)
-                    self.add_summary(valid_summary_writer, dev_f1, 'dev/F1', global_step)
-                    self.add_summary(valid_summary_writer, dev_em, 'dev/EM', global_step)
-                    print("dev: loss:{}, f1:{},em:{}".format(dev_loss, dev_f1, dev_em))
+                    # dev_loss, dev_f1, dev_em = self.validate(session)
+                    # self.add_summary(valid_summary_writer, dev_loss, "dev/loss", global_step)
+                    # self.add_summary(valid_summary_writer, dev_f1, 'dev/F1', global_step)
+                    # self.add_summary(valid_summary_writer, dev_em, 'dev/EM', global_step)
+                    # print("dev: loss:{}, f1:{},em:{}".format(dev_loss, dev_f1, dev_em))
+
+                    uuid2ans = self.test(session)
+                    with codecs.open(config.predict_answer_file, 'w', encoding='utf-8') as f:
+                        ans = unicode(json.dumps(uuid2ans, ensure_ascii=False))
+                        f.write(ans)
+                    # 3.评价
+                    result = print_test_score()
+                    self.add_summary(valid_summary_writer, result['f1'], 'dev/F1', global_step)
+                    self.add_summary(valid_summary_writer, result['em'], 'dev/EM', global_step)
 
                     # 更新最好的模型
                     if best_F1 is None or best_F1 < dev_f1:
