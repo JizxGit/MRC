@@ -3,16 +3,16 @@ import numpy as np
 import tensorflow as tf
 import nltk
 
-FLAGS = tf.app.flags.FLAGS
+# FLAGS = tf.app.flags.FLAGS
 
-tf.app.flags.DEFINE_string('ckpt_path', 'model/model.ckpt-100000', '''模型保存路径''')
-tf.app.flags.DEFINE_float('learning_rate', 0.0001, '''初始学习率''')
-tf.app.flags.DEFINE_integer('train_steps', 50000, '''总的训练轮数''')
+# tf.app.flags.DEFINE_string('ckpt_path', 'model/model.ckpt-100000', '''模型保存路径''')
+# tf.app.flags.DEFINE_float('learning_rate', 0.0001, '''初始学习率''')
+# tf.app.flags.DEFINE_integer('train_steps', 50000, '''总的训练轮数''')
 
 import spacy
 
 # 加载英文模型数据，稍许等待
-nlp = spacy.load('en_core_web_sm')
+# nlp = spacy.load('en_core_web_sm')
 #
 # def main(args):
 #     print(FLAGS.learning_rate, FLAGS.learning_rate)
@@ -73,18 +73,45 @@ nlp = spacy.load('en_core_web_sm')
 # print(answer_tokens)
 
 # stack中的axis就是表示对数组 arr 中的第几维的元素进行打包（用中括号[]进行元素打包）
+# import json
+# import codecs
+# with codecs.open("./prediction.json",'r',encoding='utf-8') as f:
+#     data = json.load(f,encoding="utf-8")
+#     data=dict(data)
+#     i=0
+#     l=0
+#     for value in data.values():
+#         i+=1
+#         if len(value)>20:
+#             l+=1
+#     print(1.0*l/i)
+#
+# with open("./data/raw/dev-v1.1.json", 'r') as f:
+#     data = json.load(f)
+#     dataset = data['data']
+#     k=0
+#      l=0
+#     for i in range(len(dataset)):
+#         paragraphs = dataset[i]['paragraphs']
+#         for paragraph in paragraphs:
+#             qas = paragraph['qas']
+#             for qa in qas:
+#                 answer = qa['answers'][0]['text']
+#                 k+=1
+#                 if len(answer) > 20:
+#                     l += 1
+#     print(1.0 * l / k)
+
 import tensorflow as tf
-x_=tf.placeholder(tf.int32, shape=[None, 10])
-y_=tf.placeholder(tf.int32, shape=[None,])
-y=tf.layers.dense(tf.cast(x_,tf.float32), 3, activation=tf.nn.tanh,
-                             kernel_initializer=tf.contrib.layers.xavier_initializer())
-loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=y, labels=y_)
-loss=tf.reduce_mean(loss)
-with tf.Session() as sess:
-    tf.global_variables_initializer().run()
-    feed_dict={
-        x_:np.random.randn(3,10),
-        y_:np.array([0,1,3])
-    }
-    loss=sess.run([loss],feed_dict)
-    print(loss)
+import numpy as np
+
+a = np.random.randint(1, 5, [1, 2, 1])
+b = np.random.randint(1, 5, [1, 2, 2])
+re = np.sum(a * b, axis=1)
+
+print(a)
+print("----")
+print(b)
+print("----")
+print(re)
+print(re.shape)

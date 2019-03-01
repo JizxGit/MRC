@@ -7,7 +7,7 @@ import codecs
 import json
 from modules import *
 from data_batcher import get_batch_data
-from evaluate import f1_score, em_score,print_test_score
+from evaluate import f1_score, em_score, print_test_score
 from tensorflow.python.ops import variable_scope as vs
 from vocab import get_char2id
 
@@ -42,9 +42,12 @@ class Model(object):
 
         # Define optimizer and updates
         # (updates is what you need to fetch in session.run to do a gradient update)
-        self.global_step = tf.Variable(0, name="global_step", trainable=False)
         # opt = tf.contrib.opt.AdaMaxOptimizer(learning_rate=FLAGS.learning_rate)  # you can try other optimizers
-        opt = tf.train.AdamOptimizer(learning_rate=FLAGS.learning_rate)  # you can try other optimizers
+        self.lr = tf.get_variable("lr", shape=[], dtype=tf.float32, trainable=False)
+        self.learning_rate = tf.train.exponential_decay(FLAGS.learning_rate,
+                                                        global_step=self.global_step,
+                                                        decay_steps=200, decay_rate=0.9)
+        opt = tf.train.AdamOptimizer(learning_rate=self.lr)  # you can try other optimizers
         self.train_op = opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step)
 
     def add_placeholder(self):
@@ -71,46 +74,45 @@ class Model(object):
             # word embedding
             embedding_matrix = tf.constant(embed_matrix, dtype=tf.float32, name="word_embs")
             context_emb = tf.nn.embedding_lookup(embedding_matrix, self.context_ids)
-            self.context_emb = tf.nn.dropout(context_emb, keep_prob=self.keep_prob)
+            self.context_glove_emb = tf.nn.dropout(context_emb, keep_prob=self.keep_prob)
             ques_emb = tf.nn.embedding_lookup(embedding_matrix, self.ques_ids)
             self.ques_emb = tf.nn.dropout(ques_emb, keep_prob=self.keep_prob)
+            self.ques_glove_emb = self.ques_emb
 
             # pos embedding
             pos_embedding_matrix = tf.get_variable(name="pos_embs", shape=[self.FLAGS.pos_nums, self.FLAGS.pos_embedding_size],
-                                                   initializer=tf.truncated_normal_initializer(stddev=1), trainable=False)
+                                                   initializer=tf.truncated_normal_initializer(stddev=1))
             context_pos_emb = tf.nn.embedding_lookup(pos_embedding_matrix, self.context_pos)
             context_pos_emb = tf.nn.dropout(context_pos_emb, keep_prob=self.keep_prob)
             print("context_pos_emb :", context_pos_emb.shape)
 
             # ner embedding
             ner_embedding_matrix = tf.get_variable(name="ner_embs", shape=[self.FLAGS.ner_nums, self.FLAGS.ner_embedding_size],
-                                                   initializer=tf.truncated_normal_initializer(stddev=1), trainable=False)
+                                                   initializer=tf.truncated_normal_initializer(stddev=1))
             context_ner_emb = tf.nn.embedding_lookup(ner_embedding_matrix, self.context_ner)
             context_ner_emb = tf.nn.dropout(context_ner_emb, keep_prob=self.keep_prob)
             print("context_ner_emb :", context_ner_emb.shape)
 
             # 对齐特征
-            aligned_emb = self.align_question_embedding(self.context_emb, self.ques_emb)
+            aligned_emb = self.align_question_embedding(self.context_glove_emb, self.ques_emb, self.ques_mask)
             print("aligned_emb :", aligned_emb.shape)
-            # 将所有特征拼接起来
 
-            self.context_emb = tf.concat([self.context_emb, context_pos_emb, context_ner_emb, aligned_emb, tf.cast(self.context_features, tf.float32)], -1)
-            # self.context_emb = tf.concat([self.context_emb, context_pos_emb, context_ner_emb, aligned_emb], -1)
+            # 将所有特征拼接起来
+            self.context_emb = tf.concat(
+                [self.context_glove_emb, context_pos_emb, context_ner_emb, aligned_emb, tf.cast(self.context_features, tf.float32)], -1)
             print("after embed context_emb :", self.context_emb.shape)
 
-
-    def align_question_embedding(self, p, q):
+    def align_question_embedding(self, context, ques, ques_mask):
         """ Compute Aligned question embedding.
 
         Args:
-            p: context tensor, shape [batch_size,context_len, emb_size]
-            q: question tensor, shape [batch_size,question_len, emb_size]
+            p: context tensor, shape [batch_size, context_len, emb_size]
+            q: question tensor, shape [batch_size, question_len, emb_size]
 
         Return:
             tensor of shape [batch_size,context_len , hidden_size]
         """
-        # TODO 确认返回的 shape
-        return SeqAttnMatch(p, q)
+        return SeqAttnMatch(context, ques, ques_mask)  # [batch,context_len,h]
 
     def add_char_embedding(self, config):
 
@@ -175,6 +177,11 @@ class Model(object):
             self.ques_emb = tf.concat([self.ques_emb, self.ques_char_out], axis=2)
             print("Shape - concatenated qn embs", self.ques_emb.shape)
 
+        ######################################  FFN  ######################################
+        # 因为文章加了额外的特征，因此与问题的表示维度不同，为了一致，再引入2层的 FFN 进行变换，得到一样维度的表示
+        self.context_emb = FFN(self.context_emb, [self.FLAGS.pwnn_hidden_size, self.FLAGS.pwnn_hidden_size], scope="context_ffn")
+        self.ques_emb = FFN(self.ques_emb, [self.FLAGS.pwnn_hidden_size, self.FLAGS.pwnn_hidden_size], scope="ques_ffn")
+
         ######################################  Highway   ######################################
         if self.FLAGS.add_highway_layer:
             emb_size = self.context_emb.get_shape().as_list()[-1]
@@ -184,53 +191,82 @@ class Model(object):
 
         ######################################  RNNEncoder  ######################################
 
-        # encoder = RNNEncoder(self.FLAGS.hidden_size_encoder, self.keep_prob)
-        # context_hiddens = encoder.build_graph(self.context_emb, self.context_mask, scope_name="RNNEncoder")
-        # ques_hiddens = encoder.build_graph(self.ques_emb, self.ques_mask, scope_name="RNNEncoder")
-        # self.bug = tf.check_numerics(self.context_emb, "NaN")
-        with vs.variable_scope("context_encoder"):
-            context_hiddens = create_rnn_graph(self.FLAGS.rnn_layer_num, self.FLAGS.hidden_size, self.context_emb, self.context_mask,
-                                               "context")  # [batch,contex_len,4d]
-        # self.bug = tf.check_numerics(context_hiddens, "NaN")
-        with vs.variable_scope("question_encoder"):
-            ques_hiddens = create_rnn_graph(self.FLAGS.rnn_layer_num, self.FLAGS.hidden_size, self.ques_emb, self.ques_mask, "question")
+        # 共用同一个编码器
+        # [batch,contex_len,4d]
+        self.context_l = create_rnn_graph(1, self.FLAGS.hidden_size, self.context_emb, self.context_mask, "context_low_level")
+        self.context_h = create_rnn_graph(1, self.FLAGS.hidden_size, self.context_l, self.context_mask, "context_high_level")
 
-        # 将问题 encode 为向量
-        weights = SelfAttn(ques_hiddens,self.ques_mask)  # [batch,len]
-        weights = tf.reshape(weights, [-1, 1, self.FLAGS.ques_len])
-        encoded_question = tf.einsum('ijk,ikq->ijq', weights, ques_hiddens)  # b x 1 x 4*hidden_size
-        encoded_question = tf.reshape(encoded_question, [-1, 2 * self.FLAGS.rnn_layer_num * self.FLAGS.hidden_size])  # [batch, 4*hidden_size]
+        self.ques_l = create_rnn_graph(1, self.FLAGS.hidden_size, self.ques_emb, self.ques_mask, "ques_low_level")
+        self.ques_h = create_rnn_graph(1, self.FLAGS.hidden_size, self.ques_l, self.ques_mask, "ques_high_level")
+        self.ques_u = create_rnn_graph(1, self.FLAGS.hidden_size, tf.concat([self.ques_l, self.ques_h], axis=2), self.ques_mask, "ques_understand")
 
-        ######################################  Basic Attention  ######################################
+        # 将问题 summary 为向量
+        w = SelfAttn(self.ques_u, self.ques_mask)  # [batch,len]
+        w = tf.reshape(w, [-1, 1, self.FLAGS.ques_len])
+        encoded_question = tf.einsum('ijk,ikq->ijq', w, self.ques_u)  # b x 1 x 2*hidden_size
+        encoded_question = tf.reshape(encoded_question, [-1, 2 * self.FLAGS.hidden_size])  # [batch, 2*hidden_size]
+
+        ######################################  Attention  ######################################
         # last_dim=context_hiddens.shape().as_list()[-1]
         if self.FLAGS.Chen:
+            with vs.variable_scope("attention", reuse=False):
+                # 文章的 attention
+                atten_context_hiddens = SeqAttnMatch(self.context_h, self.ques_u)
+                context_hiddens = tf.concat([self.context_h, atten_context_hiddens], axis=2)
 
-            # 文章的 attention
-            atten_context_hiddens = SeqAttnMatch(context_hiddens,ques_hiddens)
-            context_hiddens=tf.concat([context_hiddens,atten_context_hiddens],axis=2)
+            with vs.variable_scope("self_attention", reuse=False):
+                # self attention
+                self_atten_context_hiddens = SeqAttnMatch(context_hiddens, context_hiddens)
+                context_hiddens = tf.concat([context_hiddens, self_atten_context_hiddens], axis=2)
+
+            with vs.variable_scope("model"):
+                context_hiddens = create_rnn_graph(1, self.FLAGS.hidden_size, context_hiddens, self.context_mask, "model")  # [batch,contex_len,2d]
+
+        elif self.FLAGS.fusion:
+            # 历史信息拼接起来
+            How_q = tf.concat([self.ques_glove_emb, self.ques_l, self.ques_h], axis=2)
+            How_c = tf.concat([self.context_glove_emb, self.context_l, self.context_h], axis=2)
+            print("HoW_c 的 shape：", How_c.shape)
+            print("How_q 的 shape：", How_q.shape)
+            with vs.variable_scope("low_level_fusion"):
+                self.attended_context_l = fusion_attention(How_c, How_q, self.ques_l, self.ques_mask, self.FLAGS.fusion_att_hidden_size)
+            with vs.variable_scope("high_level_fusion"):
+                self.attended_context_h = fusion_attention(How_c, How_q, self.ques_h, self.ques_mask, self.FLAGS.fusion_att_hidden_size)
+            with vs.variable_scope("understand_level_fusion"):
+                self.attended_context_understand = fusion_attention(How_c, How_q, self.ques_u, self.ques_mask, self.FLAGS.fusion_att_hidden_size)
+
+            How_c_ = tf.concat([self.context_l, self.context_h, self.attended_context_l, self.attended_context_h, self.attended_context_understand],
+                               axis=2)
+            self.context_v = create_rnn_graph(1, self.FLAGS.hidden_size, How_c_, self.context_mask, "context_1")
+
+            How_c_full = tf.concat(
+                [self.context_glove_emb, self.context_l, self.context_h, self.attended_context_l, self.attended_context_h,
+                 self.attended_context_understand,
+                 self.context_v], axis=2)
+
             # self attention
-            #TODO
-            with vs.variable_scope("context_encoder2"):
-                context_hiddens = create_rnn_graph(self.FLAGS.rnn_layer_num, self.FLAGS.hidden_size, context_hiddens, self.context_mask, "context2")  # [batch,contex_len,4d]
-            # self.bug = tf.check_numerics(context_hiddens, "NaN")
+            self.self_attended_context = fusion_attention(How_c_full, How_c_full, self.context_v, self.context_mask,
+                                                          self.FLAGS.fusion_att_hidden_size)
+            self.context_uu = create_rnn_graph(1, self.FLAGS.hidden_size, tf.concat([self.context_v, self.self_attended_context], 2),
+                                               self.context_mask, "context_2")
 
 
         elif self.FLAGS.bidaf_attention:
 
             # attention 层
             attn_layer = Bidaf(self.keep_prob, self.FLAGS.hidden_size_encoder * 2)
-            attn_output = attn_layer.build_graph(context_hiddens, ques_hiddens, self.context_mask, self.ques_mask)
-            blended_represent = tf.concat([context_hiddens, attn_output], axis=2)  # (batch_size, context_len, hidden_size_encoder*8) ,论文中的G
+            attn_output = attn_layer.build_graph(self.context_h, self.ques_u, self.context_mask, self.ques_mask)
+            blended_represent = tf.concat([self.context_h, attn_output], axis=2)  # (batch_size, context_len, hidden_size_encoder*8) ,论文中的G
             self.bidaf_output = blended_represent
+
             # 再进过一个双向rnn
             modeling_rnn = RNNEncoder(self.FLAGS.hidden_size_modeling, self.keep_prob)
             blended_represent = modeling_rnn.build_graph(blended_represent, self.context_mask, "bidaf_modeling")  # 论文中的M
-            # TODO self attention
 
         else:
             attn_layer = BasicAttention(self.keep_prob)
-            _, attn_output = attn_layer.build_graph(context_hiddens, ques_hiddens, self.ques_mask)  # shape=[batch_size,context_len,ques_len]
-            blended_represent = tf.concat([context_hiddens, attn_output], axis=2)  # 拼接att和原来rnn encode的输出
+            _, attn_output = attn_layer.build_graph(self.context_h, self.ques_u, self.ques_mask)  # shape=[batch_size,context_len,ques_len]
+            blended_represent = tf.concat([self.context_h, attn_output], axis=2)  # 拼接att和原来rnn encode的输出
 
         ######################################  Output  ######################################
 
@@ -240,6 +276,17 @@ class Model(object):
                 self.logits_start, self.prob_dist_start = masked_softmax(logits_start, self.context_mask, 1)
             with vs.variable_scope("end_dist"):
                 logits_end = bilinear_sequnce_attention(context_hiddens, encoded_question)
+                self.logits_end, self.prob_dist_end = masked_softmax(logits_end, self.context_mask, 1)
+
+        elif self.FLAGS.fusion:
+            with vs.variable_scope("start_dist"):
+                logits_start = bilinear_sequnce_attention(self.context_uu, encoded_question)  # [batch,context_len]
+                self.logits_start, self.prob_dist_start = masked_softmax(logits_start, self.context_mask, 1)
+            with vs.variable_scope("end_dist"):
+                self.with_start_context = tf.expand_dims(self.prob_dist_start, axis=2) * self.context_uu
+                self.v_q = tf.reduce_sum(self.with_start_context, axis=1)
+                # TODO gru
+                logits_end = bilinear_sequnce_attention(self.context_uu, self.v_q)
                 self.logits_end, self.prob_dist_end = masked_softmax(logits_end, self.context_mask, 1)
 
         elif self.FLAGS.bidaf_pointer:
@@ -255,7 +302,7 @@ class Model(object):
         elif self.FLAGS.answer_pointer:
             hidden_size_attn = 2 * self.FLAGS.hidden_size_modeling
             pointer = Answer_Pointer(self.keep_prob, self.FLAGS.hidden_size_encoder, self.FLAGS.ques_len, hidden_size_attn)
-            p, logits = pointer.build_graph_answer_pointer(blended_represent, ques_hiddens, self.ques_mask, self.context_mask, self.FLAGS.context_len)
+            p, logits = pointer.build_graph_answer_pointer(blended_represent, self.ques_u, self.ques_mask, self.context_mask, self.FLAGS.context_len)
 
             self.logits_start = logits[0]
             self.prob_dist_start = p[0]
@@ -330,7 +377,7 @@ class Model(object):
         '''
         feed_dict = self.get_feed_dict(batch)
         output_feed = [self.train_op, self.loss, self.global_step, self.param_norm, self.gradient_norm]
-        [_ ,loss, global_step, param_norm, gradient_norm] = session.run(output_feed, feed_dict=feed_dict)
+        [_, loss, global_step, param_norm, gradient_norm] = session.run(output_feed, feed_dict=feed_dict)
         return loss, global_step, param_norm, gradient_norm
 
     def validate(self, session):
@@ -365,7 +412,7 @@ class Model(object):
         print("Computed dev loss over %i examples in %.2f seconds" % (total_num_examples, toc - tic))
         return dev_loss, dev_f1, dev_em
 
-    def test(self,session):
+    def test(self, session):
         '''
         使用dev 数据作为测试数据，进行模型的评价
 
@@ -382,7 +429,7 @@ class Model(object):
             pred_ans_start = pred_start_pos.tolist()
             pred_ans_end = pred_end_pos.tolist()
 
-            for i,(pred_start,pred_end) in enumerate(zip(pred_ans_start,pred_ans_end)):
+            for i, (pred_start, pred_end) in enumerate(zip(pred_ans_start, pred_ans_end)):
                 context_tokens = batch.context_tokens[i]  # list of strings
                 # 确保预测的范围在文章长度内
                 assert pred_start in range(len(context_tokens))
@@ -394,9 +441,8 @@ class Model(object):
                 uuid2ans[uuid] = ' '.join(pred_ans_tokens)
 
         toc = time.time()
-        print("Computed test F1\EM in %.2f seconds" % ( toc - tic))
+        print("Computed test F1\EM in %.2f seconds" % (toc - tic))
         return uuid2ans
-
 
     def get_batch_f1_em(self, session, batch):
         '''
@@ -434,16 +480,54 @@ class Model(object):
         loss, prob_dist_start, prob_dist_end = session.run(output_feed, feed_dict)
 
         # 获取开始位置、结束位置的预测
-        start_pos = np.argmax(prob_dist_start, axis=1)
-        end_pos = np.argmax(prob_dist_end, axis=1)
+        if self.FLAGS.smart_span:
+
+            curr_batch_size = batch.batch_size
+            start_pos = np.empty(shape=(curr_batch_size), dtype=int)
+            end_pos = np.empty(shape=(curr_batch_size), dtype=int)
+            maxprob = np.empty(shape=(curr_batch_size), dtype=float)
+
+            for j in range(curr_batch_size):  # for each row
+                ## Take argmax of start and end dist in a window such that  i <= j <= i + 15
+                maxprod = 0
+                chosen_start = 0
+                chosen_end = 0
+                for i in range(self.FLAGS.context_len - 16):
+                    end_dist_subset = prob_dist_end[j, i:i + 16]
+                    end_prob_max = np.amax(end_dist_subset)
+                    end_idx = np.argmax(end_dist_subset)
+                    start_prob = prob_dist_start[j, i]
+                    prod = end_prob_max * start_prob
+                    # print("Prod: ", prod)
+
+                    # print("Shape end, start:", end_prob_max.shape, start_prob.shape)
+
+                    if prod > maxprod:
+                        maxprod = prod
+                        chosen_start = i
+                        chosen_end = chosen_start + end_idx
+
+                start_pos[j] = chosen_start
+                # end_idx = np.argmax(end_dist[j:chosen_start:chosen_start+16])
+                # print("Chosen end", chosen_start+end_idx)
+                end_pos[j] = chosen_end
+                maxprob[j] = round(maxprod, 4)
+
+                ## add sanity check
+                delta = end_pos[j] - start_pos[j]
+                if delta < 0 or delta > 16:
+                    print("Error! Please look ")
+        else:
+            start_pos = np.argmax(prob_dist_start, axis=1)
+            end_pos = np.argmax(prob_dist_end, axis=1)
         return start_pos, end_pos, loss
 
     def train(self, session):
         config = self.FLAGS
 
         # tensorboard
-        train_summary_writer = tf.summary.FileWriter(config.summary_dir+"/train/", session.graph)
-        valid_summary_writer = tf.summary.FileWriter(config.summary_dir+"/dev/", session.graph)
+        train_summary_writer = tf.summary.FileWriter(config.summary_dir + "/train/", session.graph)
+        valid_summary_writer = tf.summary.FileWriter(config.summary_dir + "/dev/", session.graph)
 
         # saver
         saver = tf.train.Saver(max_to_keep=config.keep)
@@ -455,10 +539,15 @@ class Model(object):
         best_F1 = None
         best_EM = None
 
+        loss_save = 100.0
+        patience = 0
+        lr = config.learning_rate
         epoch = 0
+
+        session.run(tf.assign(self.lr, tf.constant(lr, dtype=tf.float32)))
         while config.epochs == 0 or epoch < config.epochs:
             epoch += 1
-            print("#"*50)
+            print("#" * 50)
             print("The {} training epoch".format(epoch))
 
             for batch in get_batch_data(config, "train", self.word2id):
@@ -482,26 +571,38 @@ class Model(object):
                     print("train: f1:{},em:{}".format(train_f1, train_em))
 
                     # 验证集 loss F1 EM
-                    # dev_loss, dev_f1, dev_em = self.validate(session)
-                    # self.add_summary(valid_summary_writer, dev_loss, "dev/loss", global_step)
-                    # self.add_summary(valid_summary_writer, dev_f1, 'dev/F1', global_step)
-                    # self.add_summary(valid_summary_writer, dev_em, 'dev/EM', global_step)
-                    # print("dev: loss:{}, f1:{},em:{}".format(dev_loss, dev_f1, dev_em))
-
-                    uuid2ans = self.test(session)
-                    with codecs.open(config.predict_answer_file, 'w', encoding='utf-8') as f:
-                        ans = unicode(json.dumps(uuid2ans, ensure_ascii=False))
-                        f.write(ans)
-                    # 3.评价
-                    result = print_test_score()
-                    self.add_summary(valid_summary_writer, result['f1'], 'dev/F1', global_step)
-                    self.add_summary(valid_summary_writer, result['em'], 'dev/EM', global_step)
+                    dev_loss, dev_f1, dev_em = self.validate(session)
+                    self.add_summary(valid_summary_writer, dev_loss, "dev/loss", global_step)
+                    self.add_summary(valid_summary_writer, dev_f1, 'dev/F1', global_step)
+                    self.add_summary(valid_summary_writer, dev_em, 'dev/EM', global_step)
+                    print("dev: loss:{}, f1:{},em:{}".format(dev_loss, dev_f1, dev_em))
+                    # print("lr:{}".format(self.lr))
+                    # uuid2ans = self.test(session)
+                    # with codecs.open(config.predict_answer_file, 'w', encoding='utf-8') as f:
+                    #     ans = unicode(json.dumps(uuid2ans, ensure_ascii=False))
+                    #     f.write(ans)
+                    # # 3.评价
+                    # result = print_test_score()
+                    # dev_f1, dev_em = result['f1'],result['em']
+                    # self.add_summary(valid_summary_writer, result['f1'], 'dev/F1', global_step)
+                    # self.add_summary(valid_summary_writer, result['em'], 'dev/EM', global_step)
 
                     # 更新最好的模型
                     if best_F1 is None or best_F1 < dev_f1:
-                        print("New Better Model！ Saving...")
+                        print("New Better Model！Saving to {}...".format(best_model_ckpt))
                         best_model_saver.save(session, best_model_ckpt, global_step=global_step)
                         best_F1 = dev_f1
+
+                    if dev_loss < loss_save:
+                        loss_save = dev_loss
+                        patience = 0
+                    else:
+                        patience += 1
+                    if patience >= config.patience:
+                        lr /= 2.0
+                        loss_save = dev_loss
+                        patience = 0
+                    session.run(tf.assign(self.lr, tf.constant(lr, dtype=tf.float32)))
 
         train_summary_writer.close()
         valid_summary_writer.close()

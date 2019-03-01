@@ -65,16 +65,14 @@ def official_evaluate(dataset, predictions):
     :return:
     '''
     f1 = exact_match = total = 0
-    ex=0
     for article in dataset:
         for paragraph in article['paragraphs']:
             for qa in paragraph['qas']:
-                total += 1
                 if qa['id']+"\n" not in predictions:
                     message = 'Unanswered question ' + qa['id'] + \
                               ' will receive score 0.'
-                    ex+=1
                     continue
+                total += 1
                 ground_truths = list(map(lambda x: x['text'], qa['answers']))
                 prediction = predictions[qa['id']+"\n"]
                 exact_match += metric_max_over_ground_truths(

@@ -2,6 +2,7 @@
 import tensorflow as tf
 import numpy as np
 
+
 class RNNEncoder(object):
     def __init__(self, hidden_size, keep_prob):
         self.hidden_size = hidden_size
@@ -22,8 +23,8 @@ class RNNEncoder(object):
             return output
 
 
-def create_rnn_graph(rnn_layer_num, hidden_size, x, x_mask, scope_name):
-    outs = []
+def create_rnn_graph(rnn_layer_num, hidden_size, x, x_mask, scope_name, is_concat=True):
+    outs = []  # 记录每一个双向 LSTM 的输出
     inputs_len = tf.reduce_sum(x_mask, axis=1)
     for i in range(rnn_layer_num):
         f_cell = tf.nn.rnn_cell.LSTMCell(hidden_size)
@@ -39,7 +40,10 @@ def create_rnn_graph(rnn_layer_num, hidden_size, x, x_mask, scope_name):
         x = tf.concat(outputs, axis=-1)  # 将前后向的输出拼接起来
         outs.append(x)
 
-    res = tf.concat(outs, axis=-1)  # 最后将每一层的输出拼接在一起
+    if is_concat == True:
+        res = tf.concat(outs, axis=-1)  # 最后将每一层的输出拼接在一起
+    else:
+        res = outs
     return res
 
 
@@ -68,6 +72,48 @@ class BasicAttention(object):
         output = tf.matmul(attn_dist, values)  # [batch_size,M,N]=[bacth_size,M,N] * [batch_size,N,H]
         output = tf.nn.dropout(output, self.keep_prob)
         return attn_dist, output
+
+
+def fusion_attention(HoW_c, HoW_q, question, ques_mask, att_hidden_size):
+    '''
+
+    :param HoW_c: 文章的历史信息
+    :param HoW_q: 问题的历史信息
+    :param question: 不同 level 的问题信息
+    :param ques_mask: 问题的 mask
+    :param att_hidden_size: attention 的隐藏层大小
+    :return:
+    '''
+    context_len, hidden_size = HoW_c.get_shape().as_list()[1:]
+    ques_len = HoW_q.get_shape().as_list()[1]
+
+    # U(HoW_i)  [batch * c, att_hidden_size]
+    context_proj = tf.layers.dense(tf.reshape(HoW_c, [-1, hidden_size]), att_hidden_size, activation=tf.nn.relu,
+                                   kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                                   name='proj_dense', reuse=False)
+    print("context_proj 的 shape：", context_proj.shape)
+
+    # U(HoW_j) [batch * q, att_hidden_size]
+    question_proj = tf.layers.dense(tf.reshape(HoW_q, [-1, hidden_size]), att_hidden_size, activation=tf.nn.relu,
+                                    kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                                    name='proj_dense', reuse=True)
+    print("question_proj 的 shape：", question_proj.shape)
+
+    diagonal = tf.get_variable('diagonal', [att_hidden_size], dtype=tf.float32, initializer=tf.contrib.layers.xavier_initializer())
+    diagonal_matrix = tf.matrix_diag(diagonal)  # [att_hidden_size,att_hidden_size]
+    print("diagonal_matrix 的 shape：", diagonal_matrix.shape)
+
+    # [batch,c,q]
+    part1 = tf.matmul(context_proj, diagonal_matrix) #[batch*c,att_size]
+    part1 = tf.reshape(part1, [-1, context_len, att_hidden_size]) #[batch, c, att_size]
+    part2 = tf.reshape(question_proj, [-1, ques_len, att_hidden_size]) ##[batch, q, att_size]
+    attention_score = tf.matmul(part1, tf.transpose(part2, [0,2,1]))
+    print("attention_score 的 shape：", attention_score.shape)
+
+    similarity_mask = tf.expand_dims(ques_mask, axis=1)
+    _, masked_attention_score = masked_softmax(attention_score, similarity_mask, dim=2)
+    output = tf.matmul(masked_attention_score, question)  # [batch,c,q] * [batch,q,h]=  [batch,c,h]
+    return output
 
 
 class Bidaf(object):
@@ -464,12 +510,13 @@ def masked_softmax(logits, mask, dim):
     return masked_logits, prob_distribution
 
 
-def SeqAttnMatch(x, y):
+def SeqAttnMatch(x, y, y_mask):
     """Given sequences x and y, match sequence y to each element in x.
 
     Args:
         x: tensor of shape batch x len1 x h
         y: tensor of shape batch x len2 x h
+        y_mask: batch x len2
     Return:
         matched_seq = batch * len1 * h
     """
@@ -486,9 +533,11 @@ def SeqAttnMatch(x, y):
     x_proj = tf.reshape(x_proj, [-1, len1, h])
     y_proj = tf.reshape(y_proj, [-1, len2, h])
     scores = tf.einsum('ijk,ikq->ijq', x_proj, tf.transpose(y_proj, [0, 2, 1]))  # b x len1 x len2
-    alpha_flat = tf.nn.softmax(tf.reshape(scores, [-1, len2]))
-    alpha = tf.reshape(alpha_flat, [-1, len1, len2])
-    matched_seq = tf.einsum('ijk,ikq->ijq', alpha, y)
+    y_mask = tf.expand_dims(y_mask, dim=1)  # [batch,1,len2]
+    _, attn_dist = masked_softmax(scores, y_mask, 2)
+    # alpha_flat = tf.nn.softmax(tf.reshape(scores, [-1, len2]))
+    # alpha = tf.reshape(alpha_flat, [-1, len1, len2])
+    matched_seq = tf.einsum('ijk,ikq->ijq', attn_dist, y)
     return matched_seq
 
 
@@ -503,10 +552,11 @@ def SelfAttn(x, x_mask):
     # 建立一个全连接网络，作为 w
     weight = tf.layers.dense(x_flat, 1, kernel_initializer=tf.contrib.layers.xavier_initializer())  # shape=[batch*len]
     weight = tf.reshape(weight, [-1, len_])  # shape=[batch,len]
-    _, mask_weight =masked_softmax(weight, x_mask, 1)
+    _, mask_weight = masked_softmax(weight, x_mask, 1)
     return mask_weight
 
 
+# 这是 chen 论文的最后的双线性函数
 def bilinear_sequnce_attention(context, question):
     """ A bilinear attention layer over a sequence seq w.r.t context
 
@@ -526,20 +576,59 @@ def bilinear_sequnce_attention(context, question):
     return z
 
 
-# TODO 完成 FFN
-def FFN(x):
-    '''
-    Feed_Forward_Networks: FFN(x) = W2 ReLU(W1x+b1)+b2
-    :param x: tensor of shape : batch * len * hdim
-    :return:
-    '''
-    len_, h = x.get_shape().as_list()[1:]
-    x_proj = tf.layers.dense(tf.reshape(x, [-1, h]), h, activation=tf.nn.relu,
-                             kernel_initializer=tf.contrib.layers.xavier_initializer(),
-                             name='proj_dense', reuse=False)
+def matrix_multiplication(self, mat, weight):
+    # [batch_size, seq_len, hidden_size] * [hidden_size, p] = [batch_size, seq_len, p]
 
-    y_proj = tf.layers.dense(tf.reshape(x_proj, [-1, h]), h,
-                             kernel_initializer=tf.contrib.layers.xavier_initializer(),
-                             name='proj_dense', reuse=False)
+    mat_shape = mat.get_shape().as_list()  # shape - ijk
+    weight_shape = weight.get_shape().as_list()  # shape -kl
+    assert (mat_shape[-1] == weight_shape[0])
+    mat_reshape = tf.reshape(mat, [-1, mat_shape[-1]])  # [batch_size * n, m]
+    mul = tf.matmul(mat_reshape, weight)  # [batch_size * n, p] # matmul的矩阵乘法，因此需要先进行reshape
+    return tf.reshape(mul, [-1, mat_shape[1], weight_shape[-1]])  # reshape to batch_size, seq_len, p
 
-# def diag_self_atten(x)
+
+def ln(inputs, epsilon=1e-8, scope="ln"):
+    '''Applies layer normalization. See https://arxiv.org/abs/1607.06450.
+    inputs: A tensor with 2 or more dimensions, where the first dimension has `batch_size`.
+    epsilon: A floating number. A very small number for preventing ZeroDivision Error.
+    scope: Optional scope for `variable_scope`.
+
+    Returns:
+      A tensor with the same shape and data dtype as `inputs`.
+    '''
+    with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+        inputs_shape = inputs.get_shape()
+        params_shape = inputs_shape[-1:]
+
+        mean, variance = tf.nn.moments(inputs, [-1], keep_dims=True)
+        beta = tf.get_variable("beta", params_shape, initializer=tf.zeros_initializer())
+        gamma = tf.get_variable("gamma", params_shape, initializer=tf.ones_initializer())
+        normalized = (inputs - mean) / ((variance + epsilon) ** (.5))
+        outputs = gamma * normalized + beta
+
+    return outputs
+
+
+def FFN(inputs, num_units, scope="positionwise_feedforward"):
+    '''position-wise feed forward net. See 3.3
+
+    inputs: A 3d tensor with shape of [N, T, C].
+    num_units: A list of two integers.
+    scope: Optional scope for `variable_scope`.
+    Returns:
+      A 3d tensor with the same shape and dtype as inputs
+    '''
+    with tf.variable_scope(scope, reuse=tf.AUTO_REUSE):
+        # Inner layer
+        outputs = tf.layers.dense(inputs, num_units[0], activation=tf.nn.relu)
+
+        # Outer layer
+        outputs = tf.layers.dense(outputs, num_units[1])
+
+        # Residual connection
+        # outputs += inputs
+
+        # Normalize
+        outputs = ln(outputs)
+
+    return outputs
