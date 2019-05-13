@@ -4,6 +4,7 @@ import string
 from collections import Counter
 import json
 
+
 def normalize_answer(s):
     # 删除冠词
     def remove_articles(text):
@@ -37,11 +38,12 @@ def f1_score(pred_ans, true_ans):
         f1 = (2 * precision * recall) / (precision + recall)
         return f1
 
+
 def em_score(pred_ans, true_ans):
     return (normalize_answer(pred_ans) == normalize_answer(true_ans))
 
 
-def metric_max_over_ground_truths(metric_fn,pred_ans,ground_truths):
+def metric_max_over_ground_truths(metric_fn, pred_ans, ground_truths):
     '''
     计算预测的答案与多个真实答案中 评价指标的最高得分
     :param metric_fn:
@@ -49,9 +51,9 @@ def metric_max_over_ground_truths(metric_fn,pred_ans,ground_truths):
     :param ground_truths:
     :return:
     '''
-    scores=[]
+    scores = []
     for true_ans in ground_truths:
-        score = metric_fn(pred_ans,true_ans)
+        score = metric_fn(pred_ans, true_ans)
         scores.append(score)
     return max(scores)
     # return scores[0]
@@ -65,20 +67,24 @@ def official_evaluate(dataset, predictions):
     :return:
     '''
     f1 = exact_match = total = 0
+
     for article in dataset:
         for paragraph in article['paragraphs']:
             for qa in paragraph['qas']:
-                if qa['id']+"\n" not in predictions:
-                    message = 'Unanswered question ' + qa['id'] + \
-                              ' will receive score 0.'
+                uuid = qa['id']
+                if uuid not in predictions:
+                    message = 'Unanswered question ' + uuid + ' will receive score 0.'
                     continue
+
                 total += 1
+
                 ground_truths = list(map(lambda x: x['text'], qa['answers']))
-                prediction = predictions[qa['id']+"\n"]
+                prediction = predictions[uuid]
+                prediction_text = prediction['answer'] # 获取预测的答案文本
                 exact_match += metric_max_over_ground_truths(
-                    em_score, prediction, ground_truths)
+                    em_score, prediction_text, ground_truths)
                 f1 += metric_max_over_ground_truths(
-                    f1_score, prediction, ground_truths)
+                    f1_score, prediction_text, ground_truths)
 
     exact_match = 100.0 * exact_match / total
     f1 = 100.0 * f1 / total
@@ -92,7 +98,8 @@ def print_test_score():
         dataset_json = json.load(dataset_file)
         dataset = dataset_json['data']
 
-    #获取模型预测保存的 uuid2ans 的 json 数据
+    # 获取模型预测保存的 uuid2ans 的 json 数据
+    # with open("./data/prediction.json") as prediction_file:
     with open("./data/prediction.json") as prediction_file:
         predictions = json.load(prediction_file)
 
@@ -100,6 +107,7 @@ def print_test_score():
     result = official_evaluate(dataset, predictions)
     print(result)
     return result
+
 
 if __name__ == '__main__':
     print_test_score()

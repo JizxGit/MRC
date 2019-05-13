@@ -8,16 +8,18 @@ from preprocess import main as prepro
 from model import Model
 from evaluate import print_test_score
 
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
 os.environ['CUDA_VISIBLE_DEVICES']='1'
 # 高级层面 选项
 tf.flags.DEFINE_integer("gpu", 1, "选择gpu")
-tf.flags.DEFINE_string("mode", "train", "Available modes: train / show_examples / official_eval")
+# tf.flags.DEFINE_string("mode", "train", "Available modes: train / show_examples / official_eval")
+tf.flags.DEFINE_string("mode", "official_eval", "Available modes: train / show_examples / official_eval")
 tf.flags.DEFINE_string("experiment_name", "",
                        "Unique name for your experiment. This will create a directory by this name in the experiments/ directory, which will hold all data related to this experiment")
 tf.flags.DEFINE_integer("epochs", 20, "Number of epochs to train. 0 means train indefinitely")
 
 # 超参数
-tf.flags.DEFINE_float("learning_rate", 0.01, "学习率")
+tf.flags.DEFINE_float("learning_rate", 0.001, "学习率") # fusion 的时候请用 0.002
 tf.flags.DEFINE_float("decay_steps", 100, "衰减步数")
 tf.flags.DEFINE_float("decay_rate", 0.85, "衰减率")
 tf.flags.DEFINE_float("patience", 3, "dev_loss不下降的次数")
@@ -58,7 +60,7 @@ tf.flags.DEFINE_bool("Chen", False, "Use Chen Danqi 的模型")
 tf.flags.DEFINE_bool("fusion", True, "Use fusion net 的模型")
 tf.flags.DEFINE_bool("bidaf_pointer", False, "Use bidaf_poiter")
 tf.flags.DEFINE_bool("answer_pointer", False, "Use Answer Pointer from RNET-True/False")
-tf.flags.DEFINE_bool("smart_span", False, "Select start and end idx based on smart conditions-True/False")
+tf.flags.DEFINE_bool("smart_span", True, "Select start and end idx based on smart conditions-True/False")
 
 # 训练时保存，验证频率
 tf.flags.DEFINE_integer("print_every", 10, "多少 iterations 打印一次")
@@ -113,6 +115,7 @@ def initial_model(session, ckpt_path, expect_exists=False):
 
 def main(unused_argv):
     config = tf.flags.FLAGS
+
     # 设置 GPU
     os.environ["CUDA_VISIBLE_DEVICES"] = str(config.gpu)
 

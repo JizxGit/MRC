@@ -422,15 +422,18 @@ class Model(object):
 
         print("Calculating test F1\EM...")
         tic = time.time()
-        uuid2ans = {}
+        uuid2ans = {} # uuid->预测答案 的字典
 
         for batch in get_batch_data(self.FLAGS, "dev", self.word2id):
-            pred_start_pos, pred_end_pos, loss_avg = self.get_answer_pos(session, batch)  # pred_end_pos 是 narray类型
+            pred_start_pos, pred_end_pos, loss_avg, start_probs, end_probs = self.get_answer_pos(session, batch)  # pred_end_pos 是 narray类型
             pred_ans_start = pred_start_pos.tolist()
             pred_ans_end = pred_end_pos.tolist()
 
+            start_prob_list = start_probs.tolist()
+            end_prob_list = end_probs.tolist()
+
             for i, (pred_start, pred_end) in enumerate(zip(pred_ans_start, pred_ans_end)):
-                context_tokens = batch.context_tokens[i]  # list of strings
+                context_tokens = batch.context_tokens[i]
                 # 确保预测的范围在文章长度内
                 assert pred_start in range(len(context_tokens))
                 assert pred_end in range(len(context_tokens))
@@ -438,7 +441,12 @@ class Model(object):
                 # 截取预测的答案
                 pred_ans_tokens = context_tokens[pred_start: pred_end + 1]  # list of strings
                 uuid = batch.uuids[i]
-                uuid2ans[uuid] = ' '.join(pred_ans_tokens)
+                result = dict()
+                result['tokens'] = context_tokens
+                result['answer'] = ' '.join(pred_ans_tokens)
+                result['start_probs'] = np.round(start_prob_list[i],2).tolist()
+                result['end_probs'] = np.round(end_prob_list[i],2).tolist()
+                uuid2ans[uuid] = result
 
         toc = time.time()
         print("Computed test F1\EM in %.2f seconds" % (toc - tic))
@@ -451,7 +459,7 @@ class Model(object):
         :param batch:
         :return:
         '''
-        pred_start_pos, pred_end_pos, loss_avg = self.get_answer_pos(session, batch)  # pred_end_pos 是 narray类型
+        pred_start_pos, pred_end_pos, loss_avg, _, _ = self.get_answer_pos(session, batch)  # pred_end_pos 是 narray类型
         pred_ans_start = pred_start_pos.tolist()
         pred_ans_end = pred_end_pos.tolist()
         f1 = 0.0
@@ -476,8 +484,8 @@ class Model(object):
         :return: start_pos, end_pos [batch_size]
         '''
         feed_dict = self.get_feed_dict(batch, keep_prob=1)
-        output_feed = [self.loss, self.prob_dist_start, self.prob_dist_end]
-        loss, prob_dist_start, prob_dist_end = session.run(output_feed, feed_dict)
+        output_feed = [self.loss, self.prob_dist_start, self.prob_dist_end] # 获取 开始位置的概率、结束位置的概率
+        loss, prob_dist_start, prob_dist_end= session.run(output_feed, feed_dict)
 
         # 获取开始位置、结束位置的预测
         if self.FLAGS.smart_span:
@@ -520,7 +528,8 @@ class Model(object):
         else:
             start_pos = np.argmax(prob_dist_start, axis=1)
             end_pos = np.argmax(prob_dist_end, axis=1)
-        return start_pos, end_pos, loss
+
+        return start_pos, end_pos, loss, prob_dist_start, prob_dist_end
 
     def train(self, session):
         config = self.FLAGS

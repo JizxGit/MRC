@@ -177,8 +177,8 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
     indices = range(len(examples))
     np.random.shuffle(indices)
 
-    print "Number of (context, question, answer) triples discarded due to char -> token mapping problems: ", num_mappingprob
-    print "Number of (context, question, answer) triples discarded because character-based answer span is unaligned with tokenization: ", num_tokenprob
+    print("Number of (context, question, answer) triples discarded due to char -> token mapping problems: ", num_mappingprob)
+    print("Number of (context, question, answer) triples discarded because character-based answer span is unaligned with tokenization: ", num_tokenprob)
     with codecs.open(os.path.join(out_dir, data_type) + '.context', 'w', encoding='utf-8') as context_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.question', 'w', encoding='utf-8') as question_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.answer', 'w', encoding='utf-8') as answer_writer, \

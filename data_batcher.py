@@ -106,7 +106,7 @@ def fill_batch_data_pool(batches, batch_size, context_len, ques_len, word2id, ta
         ques_line = ques_reader.readline()
         ans_span_line = ans_span_reader.readline()
         context_feature_line = context_feature_reader.readline()
-        uuid = uuid_reader.readline()
+        uuid = uuid_reader.readline().strip() #strip 避免微端的\n
 
         # 文件读取完了则退出
         if not (context_line and ques_line and ans_span_line and context_feature_line):
