@@ -6,10 +6,32 @@
     <script src="https://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js"></script>
     <script>
         $(document).ready(function () {
-            // $("#reload").click(function(){
-            //     location.reload()
-            // });
+            $("#prob_view").hide(); //一开始将预测的概率图隐藏起来
         });
+
+        //选择其他问题时更新页面的操作
+        function change_question() {
+            var question = $("select option:selected");
+            $("#true_answer").val(question.attr("data_answer"));//更新真正的答案
+            $("#question_index").val(question.index());//
+            $("#predict_answer").val("");//清空上次预测的答案
+        }
+
+        //ajax 请求后台
+        function predict() {
+            data = {
+                "uuid": $("select option:selected").val()
+            };
+            $.post("/predict", data, function (res) {
+                $("#predict_answer").val(res["predict_answer"]);//显示预测答案
+                $("#context_start_prob").html(res["context_start_prob"]);//开始位置预测概率
+                $("#context_end_prob").html(res["context_end_prob"]);//结束位置预测概率
+                if (res['success']) {
+                    $("#prob_view").show();//显示概率图
+                    $("#context").hide();//隐藏输入框
+                }
+            });
+        }
     </script>
 
     <style type="text/css">
@@ -21,11 +43,18 @@
             padding: 1px 50px 10px 50px;
             border-radius: 10px;
         }
-        .start-end{
+
+        .start-end {
             display: grid;
             grid-template-columns: 1fr 1fr;
             grid-gap: 0 10px;
             justify-items: center;
+        }
+
+        .grid_item {
+            background-color: white;
+            padding: 10px;
+            border-radius: 5px;
         }
 
     </style>
@@ -45,43 +74,50 @@
 <div>
     <div class="center">
         <h3 style="text-align: center">Insun 阅读理解系统</h3>
-        <!--<div style="text-align: right"> —insun 实验室 </div>-->
+
         <form action="/predict" method="post">
-            <input type="hidden" name="index" value="{{index}}">
+
+            <!--隐藏的下标等id-->
+            <input type="hidden" name="context_index" value="{{context_index}}">
+            <input type="hidden" name="question_index" value="{{question_index}}">
 
             <div class="form-group">
-                <label class=" control-label">文章 {{index}}</label>
-                {% if not context_start_prob %}
-                    <textarea class="form-control" rows="10" name="context">{{context}}</textarea>
-                {% else %}
-                    <textarea class="form-control" rows="10" name="context" style="display: none;">{{context}}</textarea>
-                {% endif %}
+                <label class=" control-label">文章 {{context_index}}</label>
+                <textarea id="context" class="form-control" rows="10" name="context">{{context}}</textarea>
 
-                {% if context_start_prob %}
-                <div class="start-end">
-                    <p style="background-color: white;padding:10px;border-radius:5px"> {{context_start_prob| safe }}</p>
-                    <p style="background-color: white;padding:10px;border-radius:5px"> {{context_end_prob| safe }}</p>
+                <div id="prob_view" class="start-end">
+                    <p id="context_start_prob" class="grid_item"></p>
+                    <p id="context_end_prob" class="grid_item"></p>
                     <span>开始位置预测</span>
                     <span>结束位置预测</span>
                 </div>
-                {% endif %}
             </div>
 
             <div class="form-group">
                 <label class=" control-label">问题：</label>
-                <textarea class="form-control" rows="3" name="question">{{ question }}</textarea>
+                <select class="form-control" onchange="change_question()" name="question_uuid">
+                    {% for qa in qas %}
+                        {% if question == qa[1] %}
+                        <option value="{{qa[0]}}" data_answer="{{qa[2]}}" selected>{{qa[1]}}</option>
+                        {% else %}
+                        <option value="{{qa[0]}}" data_answer="{{qa[2]}}">{{qa[1]}}</option>
+                        {% endif %}
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>正确答案 (含多个人工标注候选项)：</label>
+                <input id="true_answer" name="true_answer" type="text" class="form-control" value="{{ true_answer }}"/>
+            </div>
+
+            <div class="form-group">
+                <label>预测的答案：</label>
+                <input id="predict_answer" name="predict_answer" type="text" class="form-control"/>
             </div>
             <div class="form-group">
-                <label>正确答案 (含多个人工标注候选项)：</label> <input name="answer" type="text" class="form-control" value="{{ answer }}"/>
-            </div>
-            <div class="form-group">
-                <label>预测的答案：</label> <input name="predict" type="text" class="form-control" value="{{ predict }}"/>
-            </div>
-            <div class="form-group">
-                <!--这个 if 没有什么用了-->
-                <!--{% if inital %} {% else %}<h5 style="color:red">先<span>获取文章</span>，再<span>预测</span></h5>{% endif %}-->
                 <a href="/" class="btn btn-primary">随机获取文章</a>
-                <button type="submit" class="btn btn-success">预测</button>
+                <button type="button" onclick="predict()" class="btn btn-success">预测</button>
             </div>
         </form>
 
