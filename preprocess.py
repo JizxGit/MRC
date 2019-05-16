@@ -110,6 +110,16 @@ def getcharloc2wordloc(context, context_tokens):
     return mapping
 
 
+def c2q_match(context_list, question_set):
+    '''
+    判断文章单词是否出现在问题中
+    :param context_list: 文章单词列表
+    :param question_set: 问题单词集
+    :return:
+    '''
+    return [(1 if w in question_set else 0) for w in context_list]
+
+
 def preprocess_and_save_data(data_type, file_name, out_dir):
     '''
     将json数据处理为训练数据，并保存
@@ -128,7 +138,7 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
         for paragraph in paragraphs:
             context = paragraph['context']
             context = context.replace("''", '" ').replace("``", '" ').replace('　', ' ')
-            context_tokens, context_poses, context_ners, context_lemmas, context_tf = tokenize_pos_ner(context)  # token是小写的
+            context_tokens, context_poses, context_ners, context_lemmas, context_tf = tokenize_pos_ner(context)
             # context = context.lower()  # 在tokenize后再小写，因为nltk对大小写敏感
 
             qas = paragraph['qas']
@@ -141,14 +151,12 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
                 question = qa['question']
                 uuid = qa['id']
                 question_tokens, question_poses, question_ners, question_lemmas, _ = tokenize_pos_ner(question)
+
                 question_tokens_lower = [w.lower() for w in question_tokens]
-                question_tokens_set = set(question_tokens)
-                question_tokens_lower_set = set(question_tokens_lower)
-                question_lemmas_set = set(question_lemmas)
                 context_tokens_lower = [w.lower() for w in context_tokens]
-                exact_match = [(1 if w in question_tokens_set else 0) for w in context_tokens]  # 精确匹配
-                lower_match = [(1 if w in question_tokens_lower_set else 0) for w in context_tokens_lower]  # 小写匹配
-                lemma_match = [(1 if w in question_lemmas_set else 0) for w in context_lemmas]  # 提取文章 token 的词干是否出现在问题中
+                exact_match = c2q_match(context_tokens,set(question_tokens))   # 精确匹配
+                lower_match = c2q_match(context_tokens_lower, set(question_tokens_lower)) # 小写匹配
+                lemma_match = c2q_match(context_lemmas, set(question_lemmas)) # 提取文章 token 的词干是否出现在问题中
 
                 # 只选择第一个答案
                 answer = qa['answers'][0]['text']
@@ -172,13 +180,14 @@ def preprocess_and_save_data(data_type, file_name, out_dir):
                 feature = zip(context_poses, context_ners, context_tf, exact_match, lower_match, lemma_match)
                 context_feature = [str(f) for f in feature]
                 examples.append((SPLIT_TOKEN.join(context_tokens), SPLIT_TOKEN.join(question_tokens), SPLIT_TOKEN.join(answer_tokens),
-                                 SPLIT_TOKEN.join(answer_span), SPLIT_TOKEN.join(context_feature),uuid))
+                                 SPLIT_TOKEN.join(answer_span), SPLIT_TOKEN.join(context_feature), uuid))
     # 随机打乱
     indices = range(len(examples))
     np.random.shuffle(indices)
 
     print("Number of (context, question, answer) triples discarded due to char -> token mapping problems: ", num_mappingprob)
-    print("Number of (context, question, answer) triples discarded because character-based answer span is unaligned with tokenization: ", num_tokenprob)
+    print("Number of (context, question, answer) triples discarded because character-based answer span is unaligned with tokenization: ",
+          num_tokenprob)
     with codecs.open(os.path.join(out_dir, data_type) + '.context', 'w', encoding='utf-8') as context_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.question', 'w', encoding='utf-8') as question_writer, \
             codecs.open(os.path.join(out_dir, data_type) + '.answer', 'w', encoding='utf-8') as answer_writer, \
@@ -215,10 +224,12 @@ def main(FLAGS):
     dev_ques_path = os.path.join(data_dir, "dev.question")
     dev_ans_span_path = os.path.join(data_dir, "dev.span")
 
-    if not os.path.exists(train_context_path) or not os.path.exists(train_context_feature_path) or not os.path.exists(train_ques_path) or not os.path.exists(train_ans_span_path):
+    if not os.path.exists(train_context_path) or not os.path.exists(train_context_feature_path) or not os.path.exists(
+            train_ques_path) or not os.path.exists(train_ans_span_path):
         preprocess_and_save_data('train', os.path.join(raw_data_dir, train_data), data_dir)
 
-    if not os.path.exists(dev_context_path) or not os.path.exists(dev_context_feature_path) or not os.path.exists(dev_ques_path) or not os.path.exists(dev_ans_span_path):
+    if not os.path.exists(dev_context_path) or not os.path.exists(dev_context_feature_path) or not os.path.exists(
+            dev_ques_path) or not os.path.exists(dev_ans_span_path):
         preprocess_and_save_data('dev', os.path.join(raw_data_dir, dev_data), data_dir)
 
 
