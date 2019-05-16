@@ -6,7 +6,6 @@ import time
 from vocab import PAD_ID, UNK_ID
 from vocab import get_word2id, get_tag2id, get_ner2id
 import os
-from collections import Counter
 import spacy
 
 spacy_nlp = spacy.load('en_core_web_sm')
@@ -185,7 +184,7 @@ def get_batch_data(config, data_type, word2id, truncate_long=False):
             if len(batch_data_pool) == 0:  # 数据池空了，从文件中读取数据
                 start = time.time()
                 fill_batch_data_pool(batch_data_pool, batch_size, context_len, ques_len, word2id, tag2id, ner2id, context_reader,
-                                     context_feature_file_reader, ques_reader, uuid_reader,ans_span_reader, truncate_long)
+                                     context_feature_file_reader, ques_reader, uuid_reader, ans_span_reader, truncate_long)
                 end = time.time()
                 # print('加载时间 : {}s'.format(end - start))
             if len(batch_data_pool) == 0:  # 填充后还是空，说明数据读取没了，退出
@@ -208,6 +207,7 @@ def get_batch_data(config, data_type, word2id, truncate_long=False):
             batch_context_features = np.asarray(batch_context_features)
             batch_ques_ids = np.asarray(batch_ques_ids)
             batch_ans_span = np.asarray(batch_ans_span)
+
             # 进行mask，只有进行np化后，才能进行这样的操作
             batch_context_mask = (batch_context_ids != PAD_ID).astype(np.int32)
             batch_ques_mask = (batch_ques_ids != PAD_ID).astype(np.int32)

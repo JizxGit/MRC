@@ -99,13 +99,12 @@ def print_test_score():
         dataset = dataset_json['data']
 
     # 获取模型预测保存的 uuid2ans 的 json 数据
-    # with open("./data/prediction.json") as prediction_file:
     with open("./data/prediction.json") as prediction_file:
         predictions = json.load(prediction_file)
 
     # 使用官方的评价方式进行评价
     result = official_evaluate(dataset, predictions)
-    print(result)
+    print("F1:{}, EM:{}".format(result['f1'],result['em']))
     return result
 
 
