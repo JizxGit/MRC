@@ -9,28 +9,20 @@
             $("#prob_view_div").hide(); //一开始将预测的概率图隐藏起来
         });
 
-        //选择其他问题时更新页面的操作
-        function change_question() {
-            var question = $("select option:selected");
-            $("#true_answer").val(question.attr("data_answer"));//更新真正的答案
-            $("#question_index").val(question.index());//
-            $("#predict_answer").val("");//清空上次预测的答案
-            $("#prob_view_div").hide();//隐藏概率图
-            $("#context_div").show();//显示输入框
-        }
-
         //ajax 请求后台
         function predict() {
             data = {
-                "uuid": $("select option:selected").val()
+                "context": $("#context").val(),
+                "question": $("#question").val()
             };
-            $.post("/predict", data, function (res) {
+            console.log(this);
+            $.post("/predict_online", data, function (res) {
                 $("#predict_answer").val(res["predict_answer"]);//显示预测答案
                 $("#start_probs").html(res["start_probs"]);//开始位置预测概率
                 $("#end_probs").html(res["end_probs"]);//结束位置预测概率
                 if (res['success']) {
                     $("#prob_view_div").show();//显示概率图
-                    $("#context_div").hide();//隐藏输入框
+                    // $("#context").hide();//隐藏输入框
                 }
             });
         }
@@ -51,12 +43,14 @@
             grid-template-columns: 1fr 1fr;
             grid-gap: 0 10px;
             justify-items: center;
+            margin-top: 10px;
         }
 
         .grid_item {
             background-color: white;
             padding: 10px;
             border-radius: 5px;
+            width: 100%;
         }
 
     </style>
@@ -77,18 +71,13 @@
     <div class="center">
         <h3 style="text-align: center">Insun 阅读理解系统</h3>
 
-        <form action="/predict" method="post">
-
-            <!--隐藏的下标等id-->
-            <input type="hidden" name="context_index" value="{{context_index}}">
-            <input type="hidden" name="question_index" value="{{question_index}}">
-
-            <div id="context_div" class="form-group">
-                <label class=" control-label">文章 {{context_index}}</label>
-                <textarea  class="form-control" rows="10" name="context">{{context}}</textarea>
+        <form action="" method="post">
+            <div class="form-group">
+                <label class=" control-label">文章</label>
+                <textarea id="context" class="form-control" rows="10" name="context" placeholder="请输入英文文章，字数不超过300字"></textarea>
             </div>
 
-            <div id="prob_view_div" class="form-group">
+            <div class="form-group" id="prob_view_div">
                 <label class="control-label">答案预测概率分布可视化</label>
                 <div class="start-end">
                     <p id="start_probs" class="grid_item"></p>
@@ -100,28 +89,20 @@
 
             <div class="form-group">
                 <label class=" control-label">问题</label>
-                <select class="form-control" onchange="change_question()" name="question_uuid">
-                    {% for qa in qas %}
-                    {% if question == qa[1] %}
-                    <option value="{{qa[0]}}" data_answer="{{qa[2]}}" selected>{{qa[1]}}</option>
-                    {% else %}
-                    <option value="{{qa[0]}}" data_answer="{{qa[2]}}">{{qa[1]}}</option>
-                    {% endif %}
-                    {% endfor %}
-                </select>
+                <input id="question" type="text" class="form-control" placeholder="请输入相关问题，字数不超过30字">
             </div>
 
             <div class="form-group">
-                <label>正确答案 (含多个人工标注候选项)：</label>
-                <input id="true_answer" name="true_answer" type="text" class="form-control" value="{{ true_answer }}"/>
+                <label>正确答案</label>
+                <input id="true_answer" name="true_answer" type="text" class="form-control" placeholder="请输入正确答案，答案必须在文章中"/>
             </div>
 
             <div class="form-group">
                 <label>预测的答案</label>
                 <input id="predict_answer" name="predict_answer" type="text" class="form-control" placeholder="请点击「预测」按钮，获取模型预测结果"/>
             </div>
+
             <div class="form-group">
-                <a href="/" class="btn btn-primary">随机获取文章</a>
                 <button type="button" onclick="predict()" class="btn btn-success">预测</button>
             </div>
         </form>

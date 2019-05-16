@@ -5,7 +5,13 @@ from flask import request, jsonify
 import json
 import numpy as np
 import codecs
-
+import tensorflow as tf
+from main import initial_model
+from vocab import get_embedding_word2id_id2word
+from preprocess import main as prepro
+from model import Model
+from config import config
+import logging as log
 app = Flask(__name__, template_folder='template/')
 from tqdm import tqdm
 import random
@@ -43,16 +49,33 @@ for i in tqdm(range(len(dev_data)), desc="process... dev data"):
 
         passage_list.append({"context": context, "qas": question_answers})
 
+############################### 加载模型 ###############################
+
+# 处理embedding,word2id,id2word
+config.embedding_file = config.embedding_file or 'glove.6B.{}d.txt'.format(config.embedding_size)
+embed_matrix, word2id, id2word = get_embedding_word2id_id2word(config.embedding_dir, config.embedding_file, config.embedding_size)
+
+# 处理原始数据，保存处理后的数据
+prepro(config)
+
+# 创建模型
+qa_model = Model(config, embed_matrix, word2id, id2word)
+
+# 配置session信息 
+sess_config = tf.ConfigProto(allow_soft_placement=True)  # 是否打印设备分配日志;如果你指定的设备不存在,允许TF自动分配设备 
+sess_config.gpu_options.allow_growth = True  # 动态申请显存
+sess = tf.Session(config=sess_config)
+initial_model(sess, config.best_model_ckpt_path, expect_exists=True)
+
 
 ############################### 辅助函数 ###############################
 
 def percent(prob_list):
     ''' 将 softmax 得到的结果 在进行计算百分比，用于显示字体大小 '''
     min = np.min(prob_list)
-    sum = np.sum(prob_list) - len(prob_list)*min
+    sum = np.sum(prob_list) - len(prob_list) * min
     probs = [round(prob - min / sum, 4) for prob in prob_list]
-    print(probs)
-    print(max(probs))
+    log.debug("最大的位置概率：{}".format(max(probs)))
     return probs
 
 
@@ -119,12 +142,46 @@ def predict():
 
         result = {
             'success': "true",
-            'context_start_prob': context_start_prob_html,
-            'context_end_prob': context_end_prob_html,
+            'start_probs': context_start_prob_html,
+            'end_probs': context_end_prob_html,
             'predict_answer': predict_answer
         }
+
     return jsonify(result)
+
+
+@app.route('/online', methods=['GET'])
+def online():
+    return render_template('online.html')
+
+
+@app.route('/predict_online', methods=['GET', 'POST'])
+def predict_online():
+    context = request.form['context']
+    question = request.form['question']
+    if context and question:
+
+        uuid2ans = qa_model.predict_single(sess, context, question)
+
+        result = uuid2ans.get(1) # uuid 默认为 1
+        context_tokens = result['tokens']
+        context_len = len(context_tokens)
+        start_probs = result['start_probs'][:context_len]
+        end_probs = result['end_probs'][:context_len]
+
+        start_probs = percent(start_probs)
+        end_probs = percent(end_probs)
+        # 渲染 html
+        context_start_prob_html = render_span(context_tokens, start_probs)
+        context_end_prob_html = render_span(context_tokens, end_probs, color="9,132,220")
+        result['start_probs']=context_start_prob_html
+        result['end_probs']=context_end_prob_html
+        result['success'] = "true"
+        return jsonify(result)
+
+    return jsonify(dict())
 
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
+    # app.run(port=5000)
