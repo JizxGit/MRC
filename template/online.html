@@ -15,7 +15,11 @@
                 "context": $("#context").val(),
                 "question": $("#question").val()
             };
-            console.log(this);
+            btn = $("#predict_btn");
+            if (btn.attr("disabled") === "disabled") {
+                return;
+            }
+            btn.attr("disabled", "disabled");
             $.post("/predict_online", data, function (res) {
                 $("#predict_answer").val(res["predict_answer"]);//显示预测答案
                 $("#start_probs").html(res["start_probs"]);//开始位置预测概率
@@ -24,6 +28,7 @@
                     $("#prob_view_div").show();//显示概率图
                     // $("#context").hide();//隐藏输入框
                 }
+                btn.removeAttr("disabled");
             });
         }
     </script>
@@ -51,6 +56,7 @@
             padding: 10px;
             border-radius: 5px;
             width: 100%;
+            min-height: 100px;
         }
 
     </style>
@@ -77,7 +83,7 @@
                 <textarea id="context" class="form-control" rows="10" name="context" placeholder="请输入英文文章，字数不超过300字"></textarea>
             </div>
 
-            <div class="form-group" id="prob_view_div">
+            <div class="form-group" id="prob_view_div" style="display: none">
                 <label class="control-label">答案预测概率分布可视化</label>
                 <div class="start-end">
                     <p id="start_probs" class="grid_item"></p>
@@ -103,7 +109,7 @@
             </div>
 
             <div class="form-group">
-                <button type="button" onclick="predict()" class="btn btn-success">预测</button>
+                <button id="predict_btn" type="button" onclick="predict()" class="btn btn-success">预测</button>
             </div>
         </form>
 

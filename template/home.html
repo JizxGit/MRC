@@ -19,11 +19,22 @@
             $("#context_div").show();//显示输入框
         }
 
+
+        function btn_off() {
+
+
+        }
+
         //ajax 请求后台
         function predict() {
             data = {
                 "uuid": $("select option:selected").val()
             };
+            btn = $("#predict_btn");
+            if (btn.attr("disabled") === "disabled") {
+                return;
+            }
+            btn.attr("disabled", "disabled");
             $.post("/predict", data, function (res) {
                 $("#predict_answer").val(res["predict_answer"]);//显示预测答案
                 $("#start_probs").html(res["start_probs"]);//开始位置预测概率
@@ -32,6 +43,7 @@
                     $("#prob_view_div").show();//显示概率图
                     $("#context_div").hide();//隐藏输入框
                 }
+                btn.removeAttr("disabled");
             });
         }
     </script>
@@ -57,6 +69,8 @@
             background-color: white;
             padding: 10px;
             border-radius: 5px;
+            width: 100%;
+            min-height: 250px;
         }
 
     </style>
@@ -77,7 +91,7 @@
     <div class="center">
         <h3 style="text-align: center">Insun 阅读理解系统</h3>
 
-        <form action="/predict" method="post">
+        <form action="" method="post">
 
             <!--隐藏的下标等id-->
             <input type="hidden" name="context_index" value="{{context_index}}">
@@ -85,10 +99,10 @@
 
             <div id="context_div" class="form-group">
                 <label class=" control-label">文章 {{context_index}}</label>
-                <textarea  class="form-control" rows="10" name="context">{{context}}</textarea>
+                <textarea class="form-control" rows="10" name="context">{{context}}</textarea>
             </div>
 
-            <div id="prob_view_div" class="form-group">
+            <div class="form-group" id="prob_view_div" style="display: none">
                 <label class="control-label">答案预测概率分布可视化</label>
                 <div class="start-end">
                     <p id="start_probs" class="grid_item"></p>
@@ -122,7 +136,7 @@
             </div>
             <div class="form-group">
                 <a href="/" class="btn btn-primary">随机获取文章</a>
-                <button type="button" onclick="predict()" class="btn btn-success">预测</button>
+                <button type="button" onclick="predict()" id="predict_btn" class="btn btn-success">预测</button>
             </div>
         </form>
 

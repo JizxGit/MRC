@@ -12,11 +12,11 @@ from preprocess import main as prepro
 from model import Model
 from config import config
 import logging as log
-app = Flask(__name__, template_folder='template/')
 from tqdm import tqdm
 import random
 import sys
 
+app = Flask(__name__, template_folder='template/')
 reload(sys)
 sys.setdefaultencoding('utf8')
 
@@ -31,6 +31,7 @@ with codecs.open("data/raw/dev-v1.1.json", 'r', encoding='utf-8') as f:
 with codecs.open("data/prediction.json", 'r', encoding='utf-8') as f:
     predict_dict = json.load(f)
 
+
 for i in tqdm(range(len(dev_data)), desc="process... dev data"):
     paragraphs = dev_data[i]['paragraphs']
     for paragraph in paragraphs:
@@ -42,11 +43,10 @@ for i in tqdm(range(len(dev_data)), desc="process... dev data"):
             uuid = qa['id']
             question = qa['question']
             answers = []
-            for i, ans in enumerate(qa['answers']):
-                answers.append(qa['answers'][i]['text'])
+            for j, ans in enumerate(qa['answers']):
+                answers.append(qa['answers'][j]['text'])
 
             question_answers.append((uuid, question, " ✔️ ".join(answers)))
-
         passage_list.append({"context": context, "qas": question_answers})
 
 ############################### 加载模型 ###############################
@@ -180,6 +180,7 @@ def predict_online():
         return jsonify(result)
 
     return jsonify(dict())
+
 
 
 if __name__ == '__main__':
