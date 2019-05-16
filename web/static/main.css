@@ -1,0 +1,36 @@
+.center {
+    margin: 5px auto;
+    width: 1080px;
+    background-color: #eae9e9;
+    background: linear-gradient(35deg, #CCFFFF, #FFCCCC);
+    padding: 1px 50px 10px 50px;
+    border-radius: 10px;
+}
+
+.start-end {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-gap: 0 10px;
+    justify-items: center;
+}
+
+.grid_item {
+    background-color: white;
+    padding: 10px;
+    border-radius: 5px;
+    width: 100%;
+    min-height: 250px;
+}
+
+.nav-tabs {
+    border-bottom: 1.1px solid #8ca0e8ab !important;
+}
+
+.nav-tabs > li {
+    margin-bottom: -5px !important;
+}
+
+.nav-tabs > li.active > a {
+    border: 1px solid #8ca0e8ab !important;
+    border-bottom-color: transparent !important;
+}

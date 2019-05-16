@@ -31,7 +31,6 @@ with codecs.open("data/raw/dev-v1.1.json", 'r', encoding='utf-8') as f:
 with codecs.open("data/prediction.json", 'r', encoding='utf-8') as f:
     predict_dict = json.load(f)
 
-
 for i in tqdm(range(len(dev_data)), desc="process... dev data"):
     paragraphs = dev_data[i]['paragraphs']
     for paragraph in paragraphs:
@@ -98,20 +97,19 @@ def render_span(tokens, probs, color="9, 220, 123"):
 def home(num=None):
     # 1458 文章可以举例
     # 1570
-
     total_num = len(passage_list)  # 总数
-    context_index = random.randint(0, total_num - 1) if num is None or num > total_num or num<=0 else num-1  # 随机生成或者指定文章编号
+    context_index = random.randint(0, total_num - 1) if num is None or num > total_num or num <= 0 else num - 1  # 随机生成或者指定文章编号
     passage = passage_list[context_index]
-    log.debug("文章编号："+context_index)
+    log.debug("文章编号：" + str(context_index))
     context = passage['context']
     qas = passage['qas']
     question_index = random.randint(0, len(qas) - 1)
     uqa = qas[question_index]
 
     data = {
-        'context_index': context_index+1,
+        'context_index': context_index + 1,
         'context': context,
-        'question_index': question_index+1,
+        'question_index': question_index + 1,
         'question': uqa[1],
         'qas': qas,
         'true_answer': uqa[2],
@@ -160,10 +158,9 @@ def predict_online():
     context = request.form['context']
     question = request.form['question']
     if context and question:
-
         uuid2ans = qa_model.predict_single(sess, context, question)
 
-        result = uuid2ans.get(1) # uuid 默认为 1
+        result = uuid2ans.get(1)  # uuid 默认为 1
         context_tokens = result['tokens']
         context_len = len(context_tokens)
         start_probs = result['start_probs'][:context_len]
@@ -174,13 +171,12 @@ def predict_online():
         # 渲染 html
         context_start_prob_html = render_span(context_tokens, start_probs)
         context_end_prob_html = render_span(context_tokens, end_probs, color="9,132,220")
-        result['start_probs']=context_start_prob_html
-        result['end_probs']=context_end_prob_html
+        result['start_probs'] = context_start_prob_html
+        result['end_probs'] = context_end_prob_html
         result['success'] = "true"
         return jsonify(result)
 
     return jsonify(dict())
-
 
 
 if __name__ == '__main__':
