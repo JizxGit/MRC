@@ -2,27 +2,27 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>演示页面</title>
+    <title>Insun 阅读理解系统</title>
     <script src="https://apps.bdimg.com/libs/jquery/2.1.4/jquery.min.js"></script>
     <script>
         $(document).ready(function () {
             $("#prob_view_div").hide(); //一开始将预测的概率图隐藏起来
+            $('#context_num_input').popover();
         });
 
         //选择其他问题时更新页面的操作
         function change_question() {
             var question = $("select option:selected");
             $("#true_answer").val(question.attr("data_answer"));//更新真正的答案
-            $("#question_index").val(question.index());//
+            $("#question_index").html("No.".concat(question.index() + 1));
             $("#predict_answer").val("");//清空上次预测的答案
             $("#prob_view_div").hide();//隐藏概率图
             $("#context_div").show();//显示输入框
         }
 
-
-        function btn_off() {
-
-
+        function get_context() {
+            num = $("#context_num_input").val();
+            window.location.href = "/" + num;
         }
 
         //ajax 请求后台
@@ -73,6 +73,19 @@
             min-height: 250px;
         }
 
+        .nav-tabs {
+            border-bottom: 1.1px solid #8ca0e8ab !important;
+        }
+
+        .nav-tabs > li {
+            margin-bottom: -5px !important;
+        }
+
+        .nav-tabs > li.active > a {
+            border: 1px solid #8ca0e8ab !important;
+            border-bottom-color: transparent !important;
+        }
+
     </style>
     <!-- 最新版本的 Bootstrap 核心 CSS 文件 -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@3.3.7/dist/css/bootstrap.min.css"
@@ -89,7 +102,12 @@
 <body>
 <div>
     <div class="center">
-        <h3 style="text-align: center">Insun 阅读理解系统</h3>
+        <ul class="nav nav-tabs ">
+            <li role="presentation" class=""><a href="#" style="font-size: larger;font-weight: bolder;"> Insun阅读理解系统</span></a></li>
+            <li role="presentation" class="active"><a href="#">验证集数据演示</a></li>
+            <li role="presentation"><a href="/online">在线预测</a></li>
+        </ul>
+        <h4 style="text-align: center">验证集数据演示</h4>
 
         <form action="" method="post">
 
@@ -98,11 +116,11 @@
             <input type="hidden" name="question_index" value="{{question_index}}">
 
             <div id="context_div" class="form-group">
-                <label class=" control-label">文章 {{context_index}}</label>
+                <label class=" control-label">文章 <span class="badge">No.{{context_index}}</span></label>
                 <textarea class="form-control" rows="10" name="context">{{context}}</textarea>
             </div>
 
-            <div class="form-group" id="prob_view_div" style="display: none">
+            <div class="form-group" id="prob_view_div" style="display: none;margin-bottom: 0;">
                 <label class="control-label">答案预测概率分布可视化</label>
                 <div class="start-end">
                     <p id="start_probs" class="grid_item"></p>
@@ -113,7 +131,7 @@
             </div>
 
             <div class="form-group">
-                <label class=" control-label">问题</label>
+                <label class=" control-label">问题 <span class="badge" id="question_index">No.{{question_index}}</span></label>
                 <select class="form-control" onchange="change_question()" name="question_uuid">
                     {% for qa in qas %}
                     {% if question == qa[1] %}
@@ -126,7 +144,7 @@
             </div>
 
             <div class="form-group">
-                <label>正确答案 (含多个人工标注候选项)：</label>
+                <label>正确答案 (含多个人工标注候选项，✔️是分隔符)：</label>
                 <input id="true_answer" name="true_answer" type="text" class="form-control" value="{{ true_answer }}"/>
             </div>
 
@@ -134,12 +152,19 @@
                 <label>预测的答案</label>
                 <input id="predict_answer" name="predict_answer" type="text" class="form-control" placeholder="请点击「预测」按钮，获取模型预测结果"/>
             </div>
-            <div class="form-group">
-                <a href="/" class="btn btn-primary">随机获取文章</a>
+            <div class="form-group row">
+                <div class="col-lg-2">
+                    <div class="input-group">
+                        <input id="context_num_input" type="text" class="form-control" placeholder="随机" role="button" data-trigger="hover"
+                               data-container="body" data-placement="bottom" data-content="指定文章编号（默认随机）" oninput="value=value.replace(/[^\d]/g,'')">
+                        <span class="input-group-btn">
+                            <button id="get_context_btn" onclick="get_context()" class="btn btn-primary" type="button">获取文章</button>
+                        </span>
+                    </div>
+                </div>
                 <button type="button" onclick="predict()" id="predict_btn" class="btn btn-success">预测</button>
             </div>
         </form>
-
     </div>
 </div>
 

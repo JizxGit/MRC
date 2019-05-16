@@ -100,18 +100,18 @@ def home(num=None):
     # 1570
 
     total_num = len(passage_list)  # 总数
-    context_index = random.randint(0, total_num - 1) if not num or num >= total_num else num  # 随机生成或者指定文章编号
+    context_index = random.randint(0, total_num - 1) if num is None or num > total_num or num<=0 else num-1  # 随机生成或者指定文章编号
     passage = passage_list[context_index]
-
+    log.debug("文章编号："+context_index)
     context = passage['context']
     qas = passage['qas']
     question_index = random.randint(0, len(qas) - 1)
     uqa = qas[question_index]
 
     data = {
-        'context_index': context_index,
+        'context_index': context_index+1,
         'context': context,
-        'question_index': question_index,
+        'question_index': question_index+1,
         'question': uqa[1],
         'qas': qas,
         'true_answer': uqa[2],
