@@ -82,7 +82,7 @@ def get_embedding_word2id_id2word(embedding_path, pretrained_embed_filename, dim
         embed_matrix[1, :] = np.random.randn(1, dim)  # unk随机初始化
 
         with codecs.open(embedding_file, 'r', encoding='utf-8') as f:
-            for _ in tqdm(xrange(vocab_size), desc="processing {}d glove".format(dim)):
+            for _ in tqdm(range(vocab_size), desc="processing {}d glove".format(dim)):
                 line = f.readline().rstrip().split(" ")
                 word = line[0]
                 vector = [float(v) for v in line[1:]]
