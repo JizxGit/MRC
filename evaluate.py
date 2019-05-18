@@ -80,7 +80,7 @@ def official_evaluate(dataset, predictions):
 
                 ground_truths = list(map(lambda x: x['text'], qa['answers']))
                 prediction = predictions[uuid]
-                prediction_text = prediction['answer'] # 获取预测的答案文本
+                prediction_text = prediction['predict_answer'] # 获取预测的答案文本
                 exact_match += metric_max_over_ground_truths(
                     em_score, prediction_text, ground_truths)
                 f1 += metric_max_over_ground_truths(
