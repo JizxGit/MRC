@@ -19,7 +19,7 @@ class Model(object):
     def __init__(self, FLAGS, embed_matrix, word2id, id2word):
         #### 日志相关 ####
         logging.basicConfig(level=FLAGS.log_level)
-        file_handler = logging.FileHandler(os.path.join(FLAGS.summary_dir, "log.txt"))
+        file_handler = logging.FileHandler(os.path.join(FLAGS.summary_dir, FLAGS.mode + "_log.txt"))
         logger.addHandler(file_handler)
 
         self.FLAGS = FLAGS
@@ -54,9 +54,7 @@ class Model(object):
         # (updates is what you need to fetch in session.run to do a gradient update)
         # opt = tf.contrib.opt.AdaMaxOptimizer(learning_rate=FLAGS.learning_rate)  # you can try other optimizers
         self.lr = tf.get_variable("lr", shape=[], dtype=tf.float32, trainable=False)
-        self.learning_rate = tf.train.exponential_decay(FLAGS.learning_rate,
-                                                        global_step=self.global_step,
-                                                        decay_steps=200, decay_rate=0.9)
+        # self.learning_rate = tf.train.exponential_decay(FLAGS.learning_rate, global_step=self.global_step, decay_steps=200, decay_rate=0.9)
         opt = tf.train.AdamOptimizer(learning_rate=self.lr)  # you can try other optimizers
         self.train_op = opt.apply_gradients(zip(clipped_gradients, params), global_step=self.global_step)
 
@@ -438,7 +436,7 @@ class Model(object):
 
         for batch in get_batch_data(self.FLAGS, "dev", self.word2id):
             f1_avg, em_avg, loss_avg = self.get_batch_f1_em(session, batch)
-            logger.debug("f1:{:.2f},em:{:.2f}".format(f1_avg,em_avg))
+            logger.debug("f1:{:.2f},em:{:.2f}".format(f1_avg, em_avg))
             example_num = batch.batch_size
             batch_loss.append(loss_avg * example_num)
             batch_f1.append(f1_avg * example_num)
@@ -481,12 +479,12 @@ class Model(object):
         question = question.decode("utf-8")
 
         # 1.分词，pos，ner，词干，tf
-        logger.debug("#"*20+" 开始转换为模型的输入 "+"#"*20)
+        logger.debug("#" * 20 + " 开始转换为模型的输入 " + "#" * 20)
         t1 = time.time()
         context_tokens, context_poses, context_ners, context_lemmas, context_tf = tokenize_pos_ner(context)
         question_tokens, question_poses, question_ners, question_lemmas, _ = tokenize_pos_ner(question)
         t2 = time.time()
-        logger.debug("分词、词性、实体处理: {}s".format(t2-t1))
+        logger.debug("分词、词性、实体处理: {}s".format(t2 - t1))
 
         # 2.获取文章与问题的3种匹配特征
         question_tokens_lower = [w.lower() for w in question_tokens]
@@ -546,7 +544,7 @@ class Model(object):
                       batch_context_features, batch_ques_ids, batch_ques_mask, batch_ques_tokens, batch_ans_span, batch_ans_tokens, batch_uuids)
         t5 = time.time()
         logger.debug("封装为 batch 处理: {}s".format(t5 - t4))
-        logger.debug("#"*10+" 完成转换为模型的输入，共耗时：{} ".format(t5-t1)+"#"*10)
+        logger.debug("#" * 10 + " 完成转换为模型的输入，共耗时：{} ".format(t5 - t1) + "#" * 10)
 
         return batch
 
