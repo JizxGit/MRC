@@ -7,6 +7,7 @@
         $(document).ready(function () {
             $("#prob_view_div").hide(); //一开始将预测的概率图隐藏起来
             $('#context_num_input').popover();
+
         });
 
         //选择其他问题时更新页面的操作
@@ -19,6 +20,11 @@
             $("#context_div").show();//显示输入框
         }
 
+        function get_context_by_enter(event) {
+            if(event && (event.key ==="Enter" || event.keyCode ===13 )){
+                get_context();
+            }
+        }
         function get_context() {
             num = $("#context_num_input").val();
             window.location.href = "/" + num;
@@ -70,7 +76,7 @@
 <div>
     <div class="center">
         <ul class="nav nav-tabs ">
-            <li role="presentation" class=""><a href="#" style="font-size: larger;font-weight: bolder;"> Insun阅读理解系统</span></a></li>
+            <li role="presentation" class=""><a href="#" style="font-size: larger;font-weight: bolder;"> Insun 阅读理解系统</span></a></li>
             <li role="presentation" class="active"><a href="#">验证集数据演示</a></li>
             <li role="presentation"><a href="/online">在线预测</a></li>
         </ul>
@@ -84,7 +90,7 @@
 
             <div id="context_div" class="form-group">
                 <label class=" control-label">文章 <span class="badge">No.{{context_index}}</span></label>
-                <textarea class="form-control" rows="10" name="context">{{context}}</textarea>
+                <textarea class="form-control" rows="8" name="context">{{context}}</textarea>
             </div>
 
             <div class="form-group" id="prob_view_div" style="display: none;margin-bottom: 0;">
@@ -123,9 +129,9 @@
                 <div class="col-lg-2">
                     <div class="input-group">
                         <input id="context_num_input" type="text" class="form-control" placeholder="随机" role="button" data-trigger="hover"
-                               data-container="body" data-placement="bottom" data-content="指定文章编号（默认随机）" oninput="value=value.replace(/[^\d]/g,'')">
+                               data-container="body" data-placement="bottom" data-content="指定文章编号（默认随机）" oninput="value=value.replace(/[^\d]/g,'')" onkeyup="get_context_by_enter(event)">
                         <span class="input-group-btn">
-                            <button id="get_context_btn" onclick="get_context()" class="btn btn-primary" type="button">获取文章</button>
+                            <button id="get_context_btn" onclick="get_context()"  class="btn btn-primary" type="button">获取文章</button>
                         </span>
                     </div>
                 </div>

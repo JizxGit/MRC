@@ -6,14 +6,14 @@ import json
 import numpy as np
 import codecs
 import tensorflow as tf
+from tqdm import tqdm
+import random
+
 from main import initial_model
 from vocab import get_embedding_word2id_id2word
-from preprocess import main as prepro
 from model import Model
 from config import config
 import logging as log
-from tqdm import tqdm
-import random
 import sys
 
 app = Flask(__name__, template_folder='template/')
@@ -54,8 +54,6 @@ for i in tqdm(range(len(dev_data)), desc="process... dev data"):
 config.embedding_file = config.embedding_file or 'glove.6B.{}d.txt'.format(config.embedding_size)
 embed_matrix, word2id, id2word = get_embedding_word2id_id2word(config.embedding_dir, config.embedding_file, config.embedding_size)
 
-# 处理原始数据，保存处理后的数据
-prepro(config)
 
 # 创建模型
 qa_model = Model(config, embed_matrix, word2id, id2word)
@@ -180,5 +178,6 @@ def predict_online():
 
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    app.run(host="192.168.140.62", port=5000, debug=True)
+    # app.run(port=5000, debug=True)
     # app.run(port=5000)
