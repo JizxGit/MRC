@@ -10,9 +10,9 @@ from tqdm import tqdm
 import random
 
 from main import initial_model
+from config import config
 from vocab import get_embedding_word2id_id2word
 from model import Model
-from config import config
 import logging as log
 import sys
 
@@ -124,7 +124,7 @@ def predict():
             'predict': "没有预测答案，可能原因：文章长度过长或者有特殊token"
         }
     else:
-        predict_answer = predict_entry['answer']
+        predict_answer = predict_entry['predict_answer']
         context_tokens = predict_entry['tokens']
         context_len = len(context_tokens)
         start_probs = predict_entry['start_probs'][:context_len]
@@ -178,6 +178,6 @@ def predict_online():
 
 
 if __name__ == '__main__':
-    app.run(host="192.168.140.62", port=5000, debug=True)
+    # app.run(host="192.168.140.62", port=5000, debug=True)
     # app.run(port=5000, debug=True)
-    # app.run(port=5000)
+    app.run(port=5000)
