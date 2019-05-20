@@ -35,7 +35,8 @@ class Model(object):
         self.num_chars = num_chars
 
         # 构建图
-        with tf.variable_scope("QAModel", initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
+        with tf.variable_scope("QAModel",
+                               initializer=tf.contrib.layers.variance_scaling_initializer(factor=1.0, uniform=True)):
             self.global_step = tf.Variable(0, name="global_step", trainable=False)
             self.add_placeholder()
             self.add_embedding(embed_matrix)
@@ -74,7 +75,8 @@ class Model(object):
 
             # char cnn 的 placeholder
             if self.FLAGS.add_char_embed:
-                self.char_ids_context = tf.placeholder(tf.int32, shape=[None, self.FLAGS.context_len, self.FLAGS.word_len])
+                self.char_ids_context = tf.placeholder(tf.int32,
+                                                       shape=[None, self.FLAGS.context_len, self.FLAGS.word_len])
                 self.char_ids_ques = tf.placeholder(tf.int32, shape=[None, self.FLAGS.ques_len, self.FLAGS.word_len])
 
     def add_embedding(self, embed_matrix):
@@ -88,14 +90,16 @@ class Model(object):
             self.ques_glove_emb = self.ques_emb
 
             # pos embedding
-            pos_embedding_matrix = tf.get_variable(name="pos_embs", shape=[self.FLAGS.pos_nums, self.FLAGS.pos_embedding_size],
+            pos_embedding_matrix = tf.get_variable(name="pos_embs",
+                                                   shape=[self.FLAGS.pos_nums, self.FLAGS.pos_embedding_size],
                                                    initializer=tf.truncated_normal_initializer(stddev=1))
             context_pos_emb = tf.nn.embedding_lookup(pos_embedding_matrix, self.context_pos)
             context_pos_emb = tf.nn.dropout(context_pos_emb, keep_prob=self.keep_prob)
             logger.debug("context_pos_emb :{}".format(context_pos_emb.shape))
 
             # ner embedding
-            ner_embedding_matrix = tf.get_variable(name="ner_embs", shape=[self.FLAGS.ner_nums, self.FLAGS.ner_embedding_size],
+            ner_embedding_matrix = tf.get_variable(name="ner_embs",
+                                                   shape=[self.FLAGS.ner_nums, self.FLAGS.ner_embedding_size],
                                                    initializer=tf.truncated_normal_initializer(stddev=1))
             context_ner_emb = tf.nn.embedding_lookup(ner_embedding_matrix, self.context_ner)
             context_ner_emb = tf.nn.dropout(context_ner_emb, keep_prob=self.keep_prob)
@@ -107,7 +111,8 @@ class Model(object):
 
             # 将所有特征拼接起来
             self.context_emb = tf.concat(
-                [self.context_glove_emb, context_pos_emb, context_ner_emb, aligned_emb, tf.cast(self.context_features, tf.float32)], -1)
+                [self.context_glove_emb, context_pos_emb, context_ner_emb, aligned_emb,
+                 tf.cast(self.context_features, tf.float32)], -1)
             logger.debug("after embed context_emb :{}".format(self.context_emb.shape))
 
     def align_question_embedding(self, context, ques, ques_mask):
@@ -128,7 +133,8 @@ class Model(object):
             length = inputs.get_shape()[-1]  # char embedding_size
             inputs = tf.expand_dims(inputs, axis=3)  # 增加channel 维度
             with vs.variable_scope(scope_name, reuse=tf.AUTO_REUSE):
-                filter = tf.get_variable("filter", [width, length, 1, output_size], initializer=tf.truncated_normal_initializer(stddev=0.1))
+                filter = tf.get_variable("filter", [width, length, 1, output_size],
+                                         initializer=tf.truncated_normal_initializer(stddev=0.1))
 
             convolved = tf.nn.conv2d(inputs, filter=filter, strides=[1, stride, 1, 1], padding='VALID')
             logger.debug("conv2d:{}".format(convolved.shape))
@@ -139,18 +145,22 @@ class Model(object):
         # 可训练的矩阵，dtype默认为float32
         char_embed_matrix = tf.Variable(tf.random_uniform([self.num_chars, config.char_embedding_size], -1, 1))
 
-        self.context_char_emb = tf.nn.embedding_lookup(char_embed_matrix, tf.reshape(self.char_ids_context, shape=(-1, config.word_len)))
-        self.context_char_emb = tf.reshape(self.context_char_emb, shape=(-1, config.word_len, config.char_embedding_size))
+        self.context_char_emb = tf.nn.embedding_lookup(char_embed_matrix,
+                                                       tf.reshape(self.char_ids_context, shape=(-1, config.word_len)))
+        self.context_char_emb = tf.reshape(self.context_char_emb,
+                                           shape=(-1, config.word_len, config.char_embedding_size))
         logger.debug("context_char_emb :{}".format(self.context_char_emb.shape))
         # shape = batch_size * context_len, word_max_len, char_embedding_size
 
-        self.ques_char_emb = tf.nn.embedding_lookup(char_embed_matrix, tf.reshape(self.char_ids_ques, shape=(-1, config.word_len)))
+        self.ques_char_emb = tf.nn.embedding_lookup(char_embed_matrix,
+                                                    tf.reshape(self.char_ids_ques, shape=(-1, config.word_len)))
         self.ques_char_emb = tf.reshape(self.ques_char_emb, shape=(-1, config.word_len, config.char_embedding_size))
         logger.debug("ques_char_emb :{}".format(self.context_char_emb.shape))
 
         # char CNN
         # ############# context ##############
-        self.context_cnn_out = conv1d(inputs=self.context_char_emb, output_size=config.char_out_size, width=config.window_width, stride=1,
+        self.context_cnn_out = conv1d(inputs=self.context_char_emb, output_size=config.char_out_size,
+                                      width=config.window_width, stride=1,
                                       scope_name='char-cnn')
         self.context_cnn_out = tf.nn.dropout(self.context_cnn_out, self.keep_prob)
         # shape= [batch*context_len,word_len-witdh,char_out_size]
@@ -163,7 +173,8 @@ class Model(object):
         logger.debug("Shape context embs after pooling:{}".format(self.context_cnn_out.shape))
 
         # ############# question #############
-        self.ques_cnn_out = conv1d(inputs=self.ques_char_emb, output_size=config.char_out_size, width=config.window_width, stride=1,
+        self.ques_cnn_out = conv1d(inputs=self.ques_char_emb, output_size=config.char_out_size,
+                                   width=config.window_width, stride=1,
                                    scope_name='char-cnn')
         self.ques_cnn_out = tf.nn.dropout(self.ques_cnn_out, self.keep_prob)
         logger.debug("Shape ques embs after conv:{}".format(self.ques_cnn_out.shape))
@@ -187,7 +198,8 @@ class Model(object):
 
         ######################################  FFN  ######################################
         # 因为文章加了额外的特征，因此与问题的表示维度不同，为了一致，再引入2层的 FFN 进行变换，得到一样维度的表示
-        self.context_emb = FFN(self.context_emb, [self.FLAGS.pwnn_hidden_size, self.FLAGS.pwnn_hidden_size], scope="context_ffn")
+        self.context_emb = FFN(self.context_emb, [self.FLAGS.pwnn_hidden_size, self.FLAGS.pwnn_hidden_size],
+                               scope="context_ffn")
         self.ques_emb = FFN(self.ques_emb, [self.FLAGS.pwnn_hidden_size, self.FLAGS.pwnn_hidden_size], scope="ques_ffn")
 
         ######################################  Highway   ######################################
@@ -201,12 +213,15 @@ class Model(object):
 
         # 共用同一个编码器
         # [batch,contex_len,4d]
-        self.context_l = create_rnn_graph(1, self.FLAGS.hidden_size, self.context_emb, self.context_mask, "context_low_level")
-        self.context_h = create_rnn_graph(1, self.FLAGS.hidden_size, self.context_l, self.context_mask, "context_high_level")
+        self.context_l = create_rnn_graph(1, self.FLAGS.hidden_size, self.context_emb, self.context_mask,
+                                          "context_low_level")
+        self.context_h = create_rnn_graph(1, self.FLAGS.hidden_size, self.context_l, self.context_mask,
+                                          "context_high_level")
 
         self.ques_l = create_rnn_graph(1, self.FLAGS.hidden_size, self.ques_emb, self.ques_mask, "ques_low_level")
         self.ques_h = create_rnn_graph(1, self.FLAGS.hidden_size, self.ques_l, self.ques_mask, "ques_high_level")
-        self.ques_u = create_rnn_graph(1, self.FLAGS.hidden_size, tf.concat([self.ques_l, self.ques_h], axis=2), self.ques_mask, "ques_understand")
+        self.ques_u = create_rnn_graph(1, self.FLAGS.hidden_size, tf.concat([self.ques_l, self.ques_h], axis=2),
+                                       self.ques_mask, "ques_understand")
 
         # 将问题 summary 为向量
         w = SelfAttn(self.ques_u, self.ques_mask)  # [batch,len]
@@ -228,7 +243,8 @@ class Model(object):
                 context_hiddens = tf.concat([context_hiddens, self_atten_context_hiddens], axis=2)
 
             with vs.variable_scope("model"):
-                context_hiddens = create_rnn_graph(1, self.FLAGS.hidden_size, context_hiddens, self.context_mask, "model")  # [batch,contex_len,2d]
+                context_hiddens = create_rnn_graph(1, self.FLAGS.hidden_size, context_hiddens, self.context_mask,
+                                                   "model")  # [batch,contex_len,2d]
 
         elif self.FLAGS.fusion:
             # 历史信息拼接起来
@@ -237,25 +253,31 @@ class Model(object):
             logger.debug("HoW_c 的 shape：{}".format(How_c.shape))
             logger.debug("How_q 的 shape：{}".format(How_q.shape))
             with vs.variable_scope("low_level_fusion"):
-                self.attended_context_l = fusion_attention(How_c, How_q, self.ques_l, self.ques_mask, self.FLAGS.fusion_att_hidden_size)
+                self.attended_context_l = fusion_attention(How_c, How_q, self.ques_l, self.ques_mask,
+                                                           self.FLAGS.fusion_att_hidden_size)
             with vs.variable_scope("high_level_fusion"):
-                self.attended_context_h = fusion_attention(How_c, How_q, self.ques_h, self.ques_mask, self.FLAGS.fusion_att_hidden_size)
+                self.attended_context_h = fusion_attention(How_c, How_q, self.ques_h, self.ques_mask,
+                                                           self.FLAGS.fusion_att_hidden_size)
             with vs.variable_scope("understand_level_fusion"):
-                self.attended_context_understand = fusion_attention(How_c, How_q, self.ques_u, self.ques_mask, self.FLAGS.fusion_att_hidden_size)
+                self.attended_context_understand = fusion_attention(How_c, How_q, self.ques_u, self.ques_mask,
+                                                                    self.FLAGS.fusion_att_hidden_size)
 
-            How_c_ = tf.concat([self.context_l, self.context_h, self.attended_context_l, self.attended_context_h, self.attended_context_understand],
+            How_c_ = tf.concat([self.context_l, self.context_h, self.attended_context_l, self.attended_context_h,
+                                self.attended_context_understand],
                                axis=2)
             self.context_v = create_rnn_graph(1, self.FLAGS.hidden_size, How_c_, self.context_mask, "context_1")
 
             How_c_full = tf.concat(
-                [self.context_glove_emb, self.context_l, self.context_h, self.attended_context_l, self.attended_context_h,
+                [self.context_glove_emb, self.context_l, self.context_h, self.attended_context_l,
+                 self.attended_context_h,
                  self.attended_context_understand,
                  self.context_v], axis=2)
 
             # self attention
             self.self_attended_context = fusion_attention(How_c_full, How_c_full, self.context_v, self.context_mask,
                                                           self.FLAGS.fusion_att_hidden_size)
-            self.context_uu = create_rnn_graph(1, self.FLAGS.hidden_size, tf.concat([self.context_v, self.self_attended_context], 2),
+            self.context_uu = create_rnn_graph(1, self.FLAGS.hidden_size,
+                                               tf.concat([self.context_v, self.self_attended_context], 2),
                                                self.context_mask, "context_2")
 
 
@@ -264,16 +286,19 @@ class Model(object):
             # attention 层
             attn_layer = Bidaf(self.keep_prob, self.FLAGS.hidden_size_encoder * 2)
             attn_output = attn_layer.build_graph(self.context_h, self.ques_u, self.context_mask, self.ques_mask)
-            blended_represent = tf.concat([self.context_h, attn_output], axis=2)  # (batch_size, context_len, hidden_size_encoder*8) ,论文中的G
+            blended_represent = tf.concat([self.context_h, attn_output],
+                                          axis=2)  # (batch_size, context_len, hidden_size_encoder*8) ,论文中的G
             self.bidaf_output = blended_represent
 
             # 再进过一个双向rnn
             modeling_rnn = RNNEncoder(self.FLAGS.hidden_size_modeling, self.keep_prob)
-            blended_represent = modeling_rnn.build_graph(blended_represent, self.context_mask, "bidaf_modeling")  # 论文中的M
+            blended_represent = modeling_rnn.build_graph(blended_represent, self.context_mask,
+                                                         "bidaf_modeling")  # 论文中的M
 
         else:
             attn_layer = BasicAttention(self.keep_prob)
-            _, attn_output = attn_layer.build_graph(self.context_h, self.ques_u, self.ques_mask)  # shape=[batch_size,context_len,ques_len]
+            _, attn_output = attn_layer.build_graph(self.context_h, self.ques_u,
+                                                    self.ques_mask)  # shape=[batch_size,context_len,ques_len]
             blended_represent = tf.concat([self.context_h, attn_output], axis=2)  # 拼接att和原来rnn encode的输出
 
         ######################################  Output  ######################################
@@ -300,17 +325,22 @@ class Model(object):
         elif self.FLAGS.bidaf_pointer:
             with vs.variable_scope("StartDist"):
                 start_softmax_layer = Bidaf_output_layer(self.FLAGS.context_len, 10 * self.FLAGS.hidden_size_encoder)
-                self.logits_start, self.prob_dist_start = start_softmax_layer.build_graph(blended_represent, self.bidaf_output, self.context_mask)
+                self.logits_start, self.prob_dist_start = start_softmax_layer.build_graph(blended_represent,
+                                                                                          self.bidaf_output,
+                                                                                          self.context_mask)
             with vs.variable_scope("EndDist"):
                 modeling_rnn = RNNEncoder(self.FLAGS.hidden_size_modeling, self.keep_prob)
                 M2 = modeling_rnn.build_graph(blended_represent, self.context_mask, "bidaf_modeling")
                 end_softmax_layer = Bidaf_output_layer(self.FLAGS.context_len, 10 * self.FLAGS.hidden_size_encoder)
-                self.logits_end, self.prob_dist_end = end_softmax_layer.build_graph(M2, self.bidaf_output, self.context_mask)
+                self.logits_end, self.prob_dist_end = end_softmax_layer.build_graph(M2, self.bidaf_output,
+                                                                                    self.context_mask)
 
         elif self.FLAGS.answer_pointer:
             hidden_size_attn = 2 * self.FLAGS.hidden_size_modeling
-            pointer = Answer_Pointer(self.keep_prob, self.FLAGS.hidden_size_encoder, self.FLAGS.ques_len, hidden_size_attn)
-            p, logits = pointer.build_graph_answer_pointer(blended_represent, self.ques_u, self.ques_mask, self.context_mask, self.FLAGS.context_len)
+            pointer = Answer_Pointer(self.keep_prob, self.FLAGS.hidden_size_encoder, self.FLAGS.ques_len,
+                                     hidden_size_attn)
+            p, logits = pointer.build_graph_answer_pointer(blended_represent, self.ques_u, self.ques_mask,
+                                                           self.context_mask, self.FLAGS.context_len)
 
             self.logits_start = logits[0]
             self.prob_dist_start = p[0]
@@ -318,16 +348,20 @@ class Model(object):
             self.prob_dist_end = p[1]
 
         else:
-            blended_reps_final = tf.contrib.layers.fully_connected(blended_represent, num_outputs=self.FLAGS.hidden_size_fully_connected)
+            blended_reps_final = tf.contrib.layers.fully_connected(blended_represent,
+                                                                   num_outputs=self.FLAGS.hidden_size_fully_connected)
             with vs.variable_scope("StartDist"):
                 start_softmax_layer = SimpleSoftmaxLayer()
-                self.logits_start, self.prob_dist_start = start_softmax_layer.build_graph(blended_reps_final, self.context_mask)
+                self.logits_start, self.prob_dist_start = start_softmax_layer.build_graph(blended_reps_final,
+                                                                                          self.context_mask)
             with vs.variable_scope("EndDist"):
                 end_softmax_layer = SimpleSoftmaxLayer()
-                self.logits_end, self.prob_dist_end = end_softmax_layer.build_graph(blended_reps_final, self.context_mask)
+                self.logits_end, self.prob_dist_end = end_softmax_layer.build_graph(blended_reps_final,
+                                                                                    self.context_mask)
 
     def add_loss(self):
-        loss_start = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits_start, labels=self.ans_span[:, 0])
+        loss_start = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits_start,
+                                                                    labels=self.ans_span[:, 0])
         loss_start = tf.reduce_mean(loss_start)
 
         loss_end = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.logits_end, labels=self.ans_span[:, 1])
@@ -464,7 +498,8 @@ class Model(object):
         uuid2ans = {}  # uuid->预测答案 的字典
 
         for batch in get_batch_data(self.FLAGS, "dev", self.word2id):
-            start_poses, end_poses, loss_avg, start_probs, end_probs = self.get_answer_pos(session, batch)  # pred_end_pos 是 narray类型
+            start_poses, end_poses, loss_avg, start_probs, end_probs = self.get_answer_pos(session,
+                                                                                           batch)  # pred_end_pos 是 narray类型
             batch_result = self.pack_model_output(batch, start_poses, end_poses, start_probs, end_probs)
             uuid2ans.update(batch_result)
 
@@ -492,7 +527,8 @@ class Model(object):
         exact_match = c2q_match(context_tokens, set(question_tokens))  # 精确匹配
         lower_match = c2q_match(context_tokens_lower, set(question_tokens_lower))  # 小写匹配
         lemma_match = c2q_match(context_lemmas, set(question_lemmas))  # 提取文章 token 的词干是否出现在问题中
-        context_tf_match = [[f1, f2, f3, f4] for f1, f2, f3, f4 in zip(context_tf, exact_match, lower_match, lemma_match)]
+        context_tf_match = [[f1, f2, f3, f4] for f1, f2, f3, f4 in
+                            zip(context_tf, exact_match, lower_match, lemma_match)]
         t3 = time.time()
         logger.debug("文章与问题匹配处理: {}s".format(t3 - t2))
 
@@ -540,8 +576,10 @@ class Model(object):
         batch_context_mask = (batch_context_ids != PAD_ID).astype(np.int32)
         batch_ques_mask = (batch_ques_ids != PAD_ID).astype(np.int32)
 
-        batch = Batch(batch_context_ids, batch_context_mask, batch_context_tokens, batch_context_pos_ids, batch_context_ner_ids,
-                      batch_context_features, batch_ques_ids, batch_ques_mask, batch_ques_tokens, batch_ans_span, batch_ans_tokens, batch_uuids)
+        batch = Batch(batch_context_ids, batch_context_mask, batch_context_tokens, batch_context_pos_ids,
+                      batch_context_ner_ids,
+                      batch_context_features, batch_ques_ids, batch_ques_mask, batch_ques_tokens, batch_ans_span,
+                      batch_ans_tokens, batch_uuids)
         t5 = time.time()
         logger.debug("封装为 batch 处理: {}s".format(t5 - t4))
         logger.debug("#" * 10 + " 完成转换为模型的输入，共耗时：{} ".format(t5 - t1) + "#" * 10)
@@ -666,10 +704,11 @@ class Model(object):
 
         loss_save = 100.0
         patience = 0
+        loss_no_decrease = 0
         lr = config.learning_rate
+        session.run(tf.assign(self.lr, tf.constant(lr, dtype=tf.float32)))  # 初始化 lr
         epoch = 0
 
-        session.run(tf.assign(self.lr, tf.constant(lr, dtype=tf.float32)))
         while config.epochs == 0 or epoch < config.epochs:
             epoch += 1
             logger.info("#" * 50)
@@ -679,7 +718,7 @@ class Model(object):
                 loss, global_step, param_norm, gradient_norm = self.train_step(session, batch)
                 # 打印
                 if global_step % config.print_every == 0:
-                    logger.info('epoch %d, global_step %d, loss %.5f,  grad norm %.5f,  param norm %.5f' % (
+                    logger.info('epoch %d, step %d, loss %.5f, grad norm %.5f, param norm %.5f' % (
                         epoch, global_step, loss, gradient_norm, param_norm))
 
                 # 保存模型
@@ -693,6 +732,7 @@ class Model(object):
                     train_f1, train_em, train_loss = self.get_batch_f1_em(session, batch)
                     self.add_summary(train_summary_writer, train_f1, 'train/F1', global_step)
                     self.add_summary(train_summary_writer, train_em, 'train/EM', global_step)
+                    self.add_summary(train_summary_writer, lr, 'train/lr', global_step)
                     logger.info("train: f1:{},em:{}".format(train_f1, train_em))
 
                     # 验证集 loss F1 EM
@@ -701,16 +741,6 @@ class Model(object):
                     self.add_summary(valid_summary_writer, dev_f1, 'dev/F1', global_step)
                     self.add_summary(valid_summary_writer, dev_em, 'dev/EM', global_step)
                     logger.info("dev: loss:{}, f1:{},em:{}".format(dev_loss, dev_f1, dev_em))
-                    # print("lr:{}".format(self.lr))
-                    # uuid2ans = self.test(session)
-                    # with codecs.open(config.predict_answer_file, 'w', encoding='utf-8') as f:
-                    #     ans = unicode(json.dumps(uuid2ans, ensure_ascii=False))
-                    #     f.write(ans)
-                    # # 3.评价
-                    # result = print_test_score()
-                    # dev_f1, dev_em = result['f1'],result['em']
-                    # self.add_summary(valid_summary_writer, result['f1'], 'dev/F1', global_step)
-                    # self.add_summary(valid_summary_writer, result['em'], 'dev/EM', global_step)
 
                     # 更新最好的模型
                     if best_F1 is None or best_F1 < dev_f1:
@@ -721,13 +751,19 @@ class Model(object):
                     if dev_loss < loss_save:
                         loss_save = dev_loss
                         patience = 0
-                    else:
+                        loss_no_decrease = 0
+                    else:  # dev loss 没有下降
                         patience += 1
+                        loss_no_decrease += 1
                     if patience >= config.patience:
                         lr /= 2.0
                         loss_save = dev_loss
                         patience = 0
+                    logger.info("learning rate: {}".format(lr))
                     session.run(tf.assign(self.lr, tf.constant(lr, dtype=tf.float32)))
+                    if loss_no_decrease >= config.exit_threshold:
+                        logger.info("training end in epoch:{},lr:{},loss:{},f1:{},em:{}".format(epoch, lr, dev_loss, dev_f1, dev_em))
+                        exit(0)
 
         train_summary_writer.close()
         valid_summary_writer.close()

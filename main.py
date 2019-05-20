@@ -4,9 +4,9 @@ import json
 import codecs
 from vocab import get_embedding_word2id_id2word
 from preprocess import main as prepro
+from config import config
 from model import Model
 from evaluate import print_test_score
-from config import config
 import logging as log
 
 
@@ -28,8 +28,8 @@ def initial_model(session, ckpt_path, expect_exists=False):
 def main(unused_argv):
     # 处理embedding,word2id,id2word
     config.embedding_file = config.embedding_file or 'glove.6B.{}d.txt'.format(config.embedding_size)
-    embed_matrix, word2id, id2word = get_embedding_word2id_id2word(config.embedding_dir, config.embedding_file, config.embedding_size)
-
+    embed_matrix, word2id, id2word = get_embedding_word2id_id2word(config.embedding_dir, config.embedding_file,
+                                                                   config.embedding_size)
     # 处理原始数据，保存处理后的数据
     prepro(config)
 
@@ -40,7 +40,7 @@ def main(unused_argv):
     sess_config = tf.ConfigProto(allow_soft_placement=True)  # 是否打印设备分配日志;如果你指定的设备不存在,允许TF自动分配设备 
     sess_config.gpu_options.allow_growth = True  # 动态申请显存
 
-    log.info("### 『{}』 model is working in『 {}』 mode，batch_size：『{}』###".format(config.experiment_name, config.mode, config.batch_size))
+    log.info("### 『{}』 model is working in『{}』 mode，batch_size：『{}』###".format(config.experiment_name, config.mode, config.batch_size))
     if config.mode == 'train':
         with tf.Session(config=sess_config) as sess:
             initial_model(sess, config.ckpt_path)
